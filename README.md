@@ -21,3 +21,5 @@ Buka `index.html` melalui server lokal jika browser memblokir resource lokal. Un
 
 ## Catatan
 Versi ini belum menghubungkan database Google Sheets/Apps Script. Ini hanya merapikan struktur file dari versi HTML yang diberikan.
+
+# v
