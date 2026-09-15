@@ -1,0 +1,4926 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>SIKOMPAK — Satpol PP & Damkar</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap"
+    rel="stylesheet"
+  >
+
+  <style>
+
+    :root{
+      --navy-950:#0B1622;
+      --navy-800:#132339;
+      --navy-700:#1C3252;
+
+      --paper:#EDEEF1;
+      --card:#FFFFFF;
+
+      --ink:#10161F;
+      --ink-soft:#5B6572;
+      --ink-faint:#8891A0;
+
+      --satpol:#2E5AAC;
+      --satpol-soft:#E4EBF7;
+
+      --damkar:#D6452C;
+      --damkar-soft:#FBE7E1;
+
+      --amber:#E8A93B;
+      --green:#3E8E5B;
+
+      --border:#DADDE3;
+
+      --radius:10px;
+    }
+
+    *{
+      box-sizing:border-box;
+    }
+
+    html,
+    body{
+      margin:0;
+      padding:0;
+    }
+
+    body{
+      background:var(--paper);
+      color:var(--ink);
+      font-family:'Inter',sans-serif;
+      -webkit-font-smoothing:antialiased;
+      min-height:100vh;
+    }
+
+    h1,
+    h2,
+    h3,
+    .display{
+      font-family:'Big Shoulders Display',sans-serif;
+      font-weight:700;
+      letter-spacing:0.01em;
+      margin:0;
+    }
+
+    .mono{
+      font-family:'IBM Plex Mono',monospace;
+    }
+
+    button{
+      font-family:inherit;
+      cursor:pointer;
+    }
+
+    input,
+    select,
+    textarea{
+      font-family:'Inter',sans-serif;
+    }
+
+    ::selection{
+      background:var(--satpol);
+      color:#fff;
+    }
+
+    /* ================= EMBLEM ================= */
+
+    .emblem{
+      width:40px;
+      height:40px;
+      flex-shrink:0;
+    }
+
+    /* ================= LOGIN ================= */
+
+    #login-screen{
+      min-height:100vh;
+      display:flex;
+    }
+
+    .login-side{
+      flex:1.1;
+      background:var(--navy-950);
+
+      background-image:
+        radial-gradient(
+          circle at 15% 20%,
+          rgba(46,90,172,0.35),
+          transparent 45%
+        ),
+        radial-gradient(
+          circle at 85% 80%,
+          rgba(214,69,44,0.30),
+          transparent 45%
+        );
+
+      color:#fff;
+
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+
+      padding:64px;
+
+      position:relative;
+      overflow:hidden;
+    }
+
+    .login-side .eyebrow{
+      font-family:'IBM Plex Mono',monospace;
+
+      font-size:12px;
+
+      letter-spacing:0.18em;
+
+      text-transform:uppercase;
+
+      color:#8FB0E8;
+
+      margin-bottom:18px;
+    }
+
+    .login-side h1{
+      font-size:clamp(38px,5vw,58px);
+
+      line-height:0.98;
+
+      color:#fff;
+    }
+
+    .login-side h1 span.b{
+      color:#7FA3E0;
+    }
+
+    .login-side p.desc{
+      color:#B7C1CF;
+
+      font-size:15px;
+
+      line-height:1.6;
+
+      max-width:420px;
+
+      margin-top:20px;
+    }
+
+    .sector-tags{
+      display:flex;
+
+      gap:12px;
+
+      margin-top:36px;
+
+      flex-wrap:wrap;
+    }
+
+    .sector-tag{
+      display:flex;
+
+      align-items:center;
+
+      gap:8px;
+
+      padding:9px 14px;
+
+      border-radius:999px;
+
+      font-size:12px;
+
+      font-weight:600;
+
+      letter-spacing:0.03em;
+
+      border:1px solid rgba(255,255,255,0.14);
+
+      background:rgba(255,255,255,0.04);
+    }
+
+    .dot{
+      width:8px;
+      height:8px;
+      border-radius:50%;
+    }
+
+    .login-form-side{
+      flex:1;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      padding:40px;
+
+      background:var(--paper);
+    }
+
+    .login-card{
+      width:100%;
+      max-width:380px;
+    }
+
+    .login-card h2{
+      font-size:26px;
+
+      margin-bottom:6px;
+    }
+
+    .login-card .sub{
+      color:var(--ink-soft);
+
+      font-size:14px;
+
+      margin-bottom:32px;
+    }
+
+    .field{
+      margin-bottom:18px;
+    }
+
+    .field label{
+      display:block;
+
+      font-size:12px;
+
+      font-weight:600;
+
+      letter-spacing:0.03em;
+
+      text-transform:uppercase;
+
+      color:var(--ink-soft);
+
+      margin-bottom:7px;
+    }
+
+    .field input,
+    .field select,
+    .field textarea{
+      width:100%;
+
+      padding:12px 14px;
+
+      border-radius:8px;
+
+      border:1.5px solid var(--border);
+
+      background:#fff;
+
+      font-size:14.5px;
+
+      color:var(--ink);
+
+      outline:none;
+
+      transition:border-color .15s;
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus{
+      border-color:var(--satpol);
+    }
+    .input-with-icon{position:relative;}
+    .input-with-icon input{padding-right:48px;}
+    .password-toggle{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:36px;height:36px;border:none;background:transparent;border-radius:7px;color:var(--ink-soft);display:flex;align-items:center;justify-content:center;}
+    .password-toggle:hover{background:var(--paper);color:var(--navy-950);}
+    .password-toggle svg{width:19px;height:19px;}
+
+    .toolbar{align-items:flex-start;}
+    .toolbar-left{display:flex;flex-direction:column;gap:10px;flex:1;min-width:280px;}
+    .search-box{position:relative;width:100%;max-width:560px;}
+    .search-box svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--ink-faint);pointer-events:none;}
+    .search-box input{width:100%;padding:11px 14px 11px 42px;border:1.5px solid var(--border);border-radius:8px;background:#fff;font-size:13.5px;outline:none;}
+    .search-box input:focus{border-color:var(--satpol);}
+
+    .status-badge{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:4px 9px;border-radius:999px;}
+    .status-belum-selesai{background:#FBE7E1;color:#B92E1A;}
+    .status-proses{background:#FFF3D8;color:#9A6500;}
+    .status-selesai{background:#E3F2E8;color:#287044;}
+
+    .status-select{
+      border:none;
+      font-size:10.5px;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+      padding:5px 24px 5px 10px;
+      border-radius:999px;
+      cursor:pointer;
+      outline:none;
+      appearance:none;
+      -webkit-appearance:none;
+      background-repeat:no-repeat;
+      background-position:right 8px center;
+      background-size:10px;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    }
+    .status-select.status-belum-selesai{background-color:#FBE7E1;color:#B92E1A;}
+    .status-select.status-proses{background-color:#FFF3D8;color:#9A6500;}
+    .status-select.status-selesai{background-color:#E3F2E8;color:#287044;}
+
+    .btn{
+      border:none;
+
+      border-radius:8px;
+
+      padding:13px 20px;
+
+      font-weight:600;
+
+      font-size:14.5px;
+
+      letter-spacing:0.01em;
+
+      display:inline-flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      gap:8px;
+
+      transition:
+        transform .1s,
+        box-shadow .15s,
+        background .15s;
+    }
+
+    .btn:active{
+      transform:scale(0.98);
+    }
+
+    .btn-primary{
+      background:var(--navy-950);
+
+      color:#fff;
+
+      width:100%;
+    }
+
+    .btn-primary:hover{
+      background:var(--navy-800);
+    }
+
+    .login-hint{
+      margin-top:18px;
+
+      font-size:12px;
+
+      color:var(--ink-faint);
+
+      background:#fff;
+
+      border:1px dashed var(--border);
+
+      border-radius:8px;
+
+      padding:10px 12px;
+
+      line-height:1.5;
+    }
+
+    .login-error{
+      background:var(--damkar-soft);
+
+      color:var(--damkar);
+
+      border-radius:8px;
+
+      padding:10px 12px;
+
+      font-size:13px;
+
+      font-weight:600;
+
+      margin-bottom:16px;
+
+      display:none;
+    }
+
+    /* ================= APP ================= */
+
+    #app-screen{
+      display:none;
+
+      min-height:100vh;
+
+      flex-direction:column;
+    }
+
+    header.topbar{
+      background:var(--navy-950);
+
+      color:#fff;
+
+      padding:18px 32px;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:space-between;
+
+      gap:20px;
+    }
+
+    header.topbar .brand{
+      display:flex;
+
+      align-items:center;
+
+      gap:14px;
+    }
+
+    header.topbar .brand-text h1{
+      font-size:22px;
+
+      color:#fff;
+
+      line-height:1;
+    }
+
+    header.topbar .brand-text .tag{
+      font-family:'IBM Plex Mono',monospace;
+
+      font-size:11px;
+
+      color:#93A2B8;
+
+      letter-spacing:0.1em;
+
+      text-transform:uppercase;
+
+      margin-top:4px;
+    }
+
+    .topbar-right{
+      display:flex;
+
+      align-items:center;
+
+      gap:18px;
+    }
+
+    .admin-chip{
+      display:flex;
+
+      align-items:center;
+
+      gap:10px;
+
+      background:rgba(255,255,255,0.06);
+
+      border:1px solid rgba(255,255,255,0.12);
+
+      padding:7px 14px 7px 7px;
+
+      border-radius:999px;
+
+      font-size:13px;
+    }
+
+    .admin-avatar{
+      width:26px;
+
+      height:26px;
+
+      border-radius:50%;
+
+      background:linear-gradient(
+        135deg,
+        var(--satpol),
+        var(--damkar)
+      );
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      font-size:11px;
+
+      font-weight:700;
+
+      color:#fff;
+    }
+
+    .logout-btn{
+      background:transparent;
+
+      border:1px solid rgba(255,255,255,0.2);
+
+      color:#EDEEF1;
+
+      padding:8px 14px;
+
+      border-radius:8px;
+
+      font-size:13px;
+
+      font-weight:600;
+    }
+
+    .logout-btn:hover{
+      background:rgba(255,255,255,0.08);
+    }
+
+    main{
+      flex:1;
+
+      padding:28px 32px 60px;
+
+      max-width:1240px;
+
+      width:100%;
+
+      margin:0 auto;
+    }
+
+    /* ================= STATS ================= */
+
+    .stats-row{
+      display:grid;
+
+      grid-template-columns:repeat(4,1fr);
+
+      gap:14px;
+
+      margin-bottom:26px;
+    }
+
+    .stat-card{
+      background:var(--card);
+
+      border:1px solid var(--border);
+
+      border-radius:var(--radius);
+
+      padding:18px 20px;
+
+      position:relative;
+
+      overflow:hidden;
+    }
+
+    .stat-card::before{
+      content:'';
+
+      position:absolute;
+
+      top:0;
+      left:0;
+      bottom:0;
+
+      width:4px;
+    }
+
+    .stat-card.c-pengendalian::before{
+      background:var(--satpol);
+    }
+
+    .stat-card.c-penegakan::before{
+      background:var(--satpol);
+      opacity:.65;
+    }
+
+    .stat-card.c-pemadaman::before{
+      background:var(--damkar);
+    }
+
+    .stat-card.c-penyelamatan::before{
+      background:var(--damkar);
+      opacity:.65;
+    }
+
+    .stat-card .num{
+      font-size:36px;
+
+      font-family:'IBM Plex Mono',monospace;
+
+      font-weight:600;
+
+      line-height:1;
+    }
+
+    .stat-card .label{
+      font-size:11.5px;
+
+      text-transform:uppercase;
+
+      letter-spacing:0.06em;
+
+      color:var(--ink-soft);
+
+      font-weight:600;
+
+      margin-top:8px;
+    }
+
+    .stat-card .sektor-mini{
+      font-size:10.5px;
+
+      color:var(--ink-faint);
+
+      margin-top:2px;
+    }
+
+    /* ================= TOOLBAR ================= */
+
+    .toolbar{
+      display:flex;
+
+      align-items:center;
+
+      justify-content:space-between;
+
+      gap:16px;
+
+      margin-bottom:18px;
+
+      flex-wrap:wrap;
+    }
+
+    .filter-tabs{
+      display:flex;
+
+      gap:6px;
+
+      background:#fff;
+
+      border:1px solid var(--border);
+
+      padding:4px;
+
+      border-radius:9px;
+    }
+
+    .filter-tab{
+      border:none;
+
+      background:transparent;
+
+      padding:8px 14px;
+
+      border-radius:6px;
+
+      font-size:13px;
+
+      font-weight:600;
+
+      color:var(--ink-soft);
+    }
+
+    .filter-tab.active{
+      background:var(--navy-950);
+
+      color:#fff;
+    }
+
+    .btn-add{
+      background:var(--damkar);
+
+      color:#fff;
+    }
+
+    .btn-add:hover{
+      background:#BE3B24;
+    }
+
+    /* ================= EMPTY ================= */
+
+    .empty-state{
+      background:#fff;
+
+      border:1.5px dashed var(--border);
+
+      border-radius:var(--radius);
+
+      padding:60px 20px;
+
+      text-align:center;
+
+      color:var(--ink-soft);
+    }
+
+    .empty-state .display{
+      font-size:22px;
+
+      color:var(--ink);
+
+      margin-bottom:6px;
+    }
+
+    /* ================= REPORT ================= */
+
+    .report-list{
+      display:flex;
+
+      flex-direction:column;
+
+      gap:10px;
+    }
+
+    .report-card{
+      background:var(--card);
+
+      border:1px solid var(--border);
+
+      border-radius:var(--radius);
+
+      padding:16px 18px;
+
+      display:flex;
+
+      gap:16px;
+
+      align-items:flex-start;
+
+      position:relative;
+
+      cursor:pointer;
+
+      transition:
+        box-shadow .15s,
+        border-color .15s;
+    }
+
+    .report-card:hover{
+      box-shadow:0 2px 12px rgba(16,22,31,0.08);
+    }
+
+    .report-card .spine{
+      width:5px;
+
+      align-self:stretch;
+
+      border-radius:4px;
+
+      flex-shrink:0;
+    }
+
+    .report-card.sk-satpol .spine{
+      background:var(--satpol);
+    }
+
+    .report-card.sk-damkar .spine{
+      background:var(--damkar);
+    }
+
+    .report-card .rc-main{
+      flex:1;
+
+      min-width:0;
+    }
+
+    .rc-top{
+      display:flex;
+
+      align-items:center;
+
+      gap:10px;
+
+      flex-wrap:wrap;
+
+      margin-bottom:6px;
+    }
+
+    .badge{
+      font-size:11px;
+
+      font-weight:700;
+
+      text-transform:uppercase;
+
+      letter-spacing:0.04em;
+
+      padding:4px 10px;
+
+      border-radius:5px;
+    }
+
+    .badge.b-satpol{
+      background:var(--satpol-soft);
+
+      color:var(--satpol);
+    }
+
+    .badge.b-damkar{
+      background:var(--damkar-soft);
+
+      color:var(--damkar);
+    }
+
+    .rc-date{
+      font-family:'IBM Plex Mono',monospace;
+
+      font-size:12.5px;
+
+      color:var(--ink-faint);
+    }
+
+    .rc-loc{
+      font-weight:600;
+
+      font-size:15px;
+
+      color:var(--ink);
+    }
+
+    .rc-sub{
+      font-size:13px;
+
+      color:var(--ink-soft);
+
+      margin-top:3px;
+    }
+
+    .rc-actions{
+      display:flex;
+
+      gap:6px;
+
+      flex-shrink:0;
+    }
+
+    .icon-btn{
+      border:1px solid var(--border);
+
+      background:#fff;
+
+      width:32px;
+
+      height:32px;
+
+      border-radius:7px;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      color:var(--ink-soft);
+    }
+
+    .icon-btn:hover{
+      background:var(--paper);
+
+      color:var(--damkar);
+    }
+
+    .phone-link{
+      color:var(--green);
+
+      font-weight:700;
+
+      text-decoration:none;
+    }
+
+    .phone-link:hover{
+      text-decoration:underline;
+    }
+
+    .rc-detail{
+      display:none;
+
+      margin-top:14px;
+
+      padding-top:14px;
+
+      border-top:1px solid var(--border);
+
+      grid-template-columns:
+        repeat(
+          auto-fill,
+          minmax(160px,1fr)
+        );
+
+      gap:12px 20px;
+    }
+
+    .rc-detail.open{
+      display:grid;
+    }
+
+    .detail-item .dl{
+      font-size:10.5px;
+
+      text-transform:uppercase;
+
+      letter-spacing:0.05em;
+
+      color:var(--ink-faint);
+
+      font-weight:600;
+
+      margin-bottom:3px;
+    }
+
+    .detail-item .dv{
+      font-size:14px;
+
+      color:var(--ink);
+    }
+
+    .detail-item.full{
+      grid-column:1/-1;
+    }
+
+    /* ================= DOCUMENTATION ================= */
+
+    .documentation-grid{
+      grid-column:1/-1;
+
+      display:grid;
+
+      grid-template-columns:
+        repeat(3,minmax(120px,1fr));
+
+      gap:10px;
+    }
+
+    .documentation-grid img{
+      width:100%;
+
+      height:150px;
+
+      object-fit:cover;
+
+      border-radius:8px;
+
+      border:1px solid var(--border);
+
+      cursor:pointer;
+    }
+
+    /* ================= MODAL ================= */
+
+    .modal-overlay{
+      display:none;
+
+      position:fixed;
+
+      inset:0;
+
+      background:rgba(11,22,34,0.55);
+
+      z-index:100;
+
+      align-items:flex-start;
+
+      justify-content:center;
+
+      padding:40px 20px;
+
+      overflow-y:auto;
+    }
+
+    .modal-overlay.open{
+      display:flex;
+    }
+
+    .modal{
+      background:#fff;
+
+      width:100%;
+
+      max-width:640px;
+
+      border-radius:14px;
+
+      overflow:hidden;
+
+      box-shadow:
+        0 20px 60px
+        rgba(0,0,0,0.3);
+    }
+
+    .modal-head{
+      background:var(--navy-950);
+
+      color:#fff;
+
+      padding:22px 26px;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:space-between;
+    }
+
+    .modal-head h2{
+      font-size:22px;
+
+      color:#fff;
+    }
+
+    .modal-close{
+      background:rgba(255,255,255,0.08);
+
+      border:none;
+
+      color:#fff;
+
+      width:30px;
+
+      height:30px;
+
+      border-radius:7px;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      font-size:16px;
+    }
+
+    .cat-tabs{
+      display:grid;
+
+      grid-template-columns:repeat(4,1fr);
+
+      gap:2px;
+
+      background:var(--border);
+    }
+
+    .cat-tab{
+      border:none;
+
+      background:#fff;
+
+      padding:16px 8px;
+
+      display:flex;
+
+      flex-direction:column;
+
+      align-items:center;
+
+      gap:6px;
+
+      font-size:12px;
+
+      font-weight:600;
+
+      color:var(--ink-soft);
+    }
+
+    .cat-tab svg{
+      width:20px;
+      height:20px;
+    }
+
+    .cat-tab.active{
+      background:var(--paper);
+    }
+
+    .cat-tab.active.satpol{
+      color:var(--satpol);
+
+      box-shadow:
+        inset 0 -3px 0
+        var(--satpol);
+    }
+
+    .cat-tab.active.damkar{
+      color:var(--damkar);
+
+      box-shadow:
+        inset 0 -3px 0
+        var(--damkar);
+    }
+
+    .modal-body{
+      padding:24px 26px;
+
+      max-height:60vh;
+
+      overflow-y:auto;
+    }
+
+    .form-grid{
+      display:grid;
+
+      grid-template-columns:1fr 1fr;
+
+      gap:16px 14px;
+    }
+
+    .form-grid .span2{
+      grid-column:1/-1;
+    }
+
+    .modal-footer{
+      padding:18px 26px;
+
+      border-top:1px solid var(--border);
+
+      display:flex;
+
+      justify-content:flex-end;
+
+      gap:10px;
+    }
+
+    .btn-ghost{
+      background:#fff;
+
+      border:1.5px solid var(--border);
+
+      color:var(--ink-soft);
+    }
+
+    .btn-ghost:hover{
+      background:var(--paper);
+    }
+
+    .btn-submit{
+      background:var(--navy-950);
+
+      color:#fff;
+    }
+
+    .btn-submit:hover{
+      background:var(--navy-800);
+    }
+
+    .req{
+      color:var(--damkar);
+    }
+
+    /* ================= MEMBER ================= */
+
+    .member-box{
+      border:1.5px solid var(--border);
+
+      border-radius:8px;
+
+      padding:12px;
+
+      background:#fff;
+    }
+
+    .member-list{
+      display:grid;
+
+      grid-template-columns:repeat(2,1fr);
+
+      gap:8px;
+    }
+
+    .member-item{
+      display:flex;
+
+      align-items:center;
+
+      gap:8px;
+
+      padding:9px 10px;
+
+      border:1px solid var(--border);
+
+      border-radius:7px;
+
+      cursor:pointer;
+
+      font-size:13px;
+
+      transition:.15s;
+    }
+
+    .member-item:hover{
+      background:var(--paper);
+    }
+
+    .member-item input{
+      width:auto;
+
+      padding:0;
+
+      margin:0;
+    }
+
+    .member-count{
+      margin-top:12px;
+
+      padding:10px 12px;
+
+      background:var(--satpol-soft);
+
+      color:var(--satpol);
+
+      border-radius:7px;
+
+      font-size:13px;
+
+      font-weight:700;
+    }
+
+    /* ================= LOCATION FIELD ================= */
+
+    .location-box{
+      border:1.5px solid var(--border);
+      border-radius:8px;
+      padding:12px;
+      background:#fff;
+    }
+
+    .location-box input{
+      width:100%;
+      margin-bottom:10px;
+    }
+
+    .loc-btn-row{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:14px;
+      flex-wrap:wrap;
+    }
+
+    .btn-sm{
+      padding:9px 14px;
+      font-size:13px;
+      border-radius:7px;
+    }
+
+    .loc-hint{
+      font-size:11px;
+      color:var(--ink-faint);
+    }
+
+    .location-result{
+      border-top:1px dashed var(--border);
+      padding-top:14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .loc-mini-label{
+      display:block;
+      font-size:11px;
+      font-weight:600;
+      letter-spacing:0.03em;
+      text-transform:uppercase;
+      color:var(--ink-faint);
+      margin-bottom:6px;
+    }
+
+    .loc-meta-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      gap:10px;
+      background:var(--paper);
+      border-radius:7px;
+      padding:10px 12px;
+    }
+
+    .loc-koordinat{
+      font-size:13px;
+      color:var(--ink-soft);
+    }
+
+    .loc-maps-link{
+      font-size:12.5px;
+      font-weight:700;
+      color:var(--satpol);
+      text-decoration:none;
+      white-space:nowrap;
+    }
+
+    .loc-maps-link:hover{
+      text-decoration:underline;
+    }
+
+    .loc-maps-link.disabled{
+      color:var(--ink-faint);
+      pointer-events:none;
+    }
+
+    .detail-loc-meta{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:4px;
+      font-size:12.5px;
+      color:var(--ink-soft);
+    }
+
+    /* ================= IMAGE PREVIEW ================= */
+
+    .image-preview{
+      display:grid;
+
+      grid-template-columns:repeat(3,1fr);
+
+      gap:10px;
+
+      margin-top:10px;
+    }
+
+    .image-preview img{
+      width:100%;
+
+      height:120px;
+
+      object-fit:cover;
+
+      border-radius:8px;
+
+      border:1px solid var(--border);
+    }
+
+    /* ================= TOAST ================= */
+
+    .toast{
+      position:fixed;
+
+      bottom:24px;
+
+      left:50%;
+
+      transform:
+        translateX(-50%)
+        translateY(20px);
+
+      background:var(--navy-950);
+
+      color:#fff;
+
+      padding:13px 22px;
+
+      border-radius:9px;
+
+      font-size:13.5px;
+
+      font-weight:600;
+
+      display:flex;
+
+      align-items:center;
+
+      gap:10px;
+
+      opacity:0;
+
+      pointer-events:none;
+
+      transition:
+        opacity .2s,
+        transform .2s;
+
+      z-index:200;
+
+      box-shadow:
+        0 10px 30px
+        rgba(0,0,0,0.25);
+    }
+
+    .toast.show{
+      opacity:1;
+
+      transform:
+        translateX(-50%)
+        translateY(0);
+    }
+
+    .toast .tdot{
+      width:8px;
+
+      height:8px;
+
+      border-radius:50%;
+
+      background:var(--green);
+    }
+
+    footer.foot{
+      text-align:center;
+
+      padding:22px;
+
+      font-size:11.5px;
+
+      color:var(--ink-faint);
+
+      font-family:
+        'IBM Plex Mono',
+        monospace;
+    }
+
+    /* ================= RESPONSIVE ================= */
+
+    @media(max-width:760px){
+
+      #login-screen{
+        flex-direction:column;
+      }
+
+      .login-side{
+        padding:40px 28px;
+      }
+
+      .stats-row{
+        grid-template-columns:
+          repeat(2,1fr);
+      }
+
+      .form-grid{
+        grid-template-columns:1fr;
+      }
+
+      header.topbar{
+        padding:16px 18px;
+
+        flex-wrap:wrap;
+      }
+
+      main{
+        padding:20px 16px 50px;
+      }
+
+      .cat-tabs{
+        grid-template-columns:
+          repeat(2,1fr);
+      }
+
+      .member-list{
+        grid-template-columns:1fr;
+      }
+
+      .image-preview{
+        grid-template-columns:1fr;
+      }
+
+      .documentation-grid{
+        grid-template-columns:1fr;
+      }
+
+    }
+
+  </style>
+</head>
+
+<body>
+
+  <!-- ================= LOGIN ================= -->
+
+  <div id="login-screen">
+
+    <div class="login-side">
+
+      <div class="eyebrow">
+        Sistem Rekap Terpadu
+      </div>
+
+      <h1>
+        SIKOMPAK<br>
+        <span class="b">
+          Satpol PP & Damkar
+        </span>
+      </h1>
+
+      <p class="desc">
+        Satu portal untuk mencatat dan merangkum
+        seluruh laporan lapangan dari dua sektor:
+        Ketertiban Umum (Satpol PP) dan
+        Pemadam Kebakaran (Damkar).
+      </p>
+
+      <div class="sector-tags">
+
+        <div class="sector-tag">
+          <span
+            class="dot"
+            style="background:#7FA3E0"
+          ></span>
+
+          Pengendalian & Penegakan
+        </div>
+
+        <div class="sector-tag">
+          <span
+            class="dot"
+            style="background:#F0937C"
+          ></span>
+
+          Pemadaman & Penyelamatan
+        </div>
+
+      </div>
+
+    </div>
+
+    <div class="login-form-side">
+
+      <div class="login-card">
+
+        <h2>
+          Login
+        </h2>
+
+        <div class="sub">
+          Login untuk mengakses
+          dasbor laporan.
+        </div>
+
+        <div
+          class="login-error"
+          id="login-error"
+        >
+          Username atau password salah.
+          Coba lagi.
+        </div>
+
+        <div class="field">
+
+          <label>
+            Username
+          </label>
+
+          <input
+            type="text"
+            id="input-username"
+            placeholder="Masukan Username anda"
+          >
+
+        </div>
+
+        <div class="field">
+          <label>Password</label>
+          <div class="input-with-icon">
+            <input type="password" id="input-password" placeholder="Tulis Password Anda" autocomplete="current-password">
+            <button type="button" class="password-toggle" id="password-toggle" onclick="togglePassword()" title="Lihat password" aria-label="Lihat password">
+              <svg id="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button
+          class="btn btn-primary"
+          onclick="handleLogin()"
+        >
+          Login
+        </button>
+
+        <div class="login-hint">
+
+          Demo login —
+
+          username:
+          <b>admin</b>
+
+          ·
+
+          password:
+          <b>admin123</b>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ================= APP ================= -->
+
+  <div id="app-screen">
+
+    <header class="topbar">
+
+      <div class="brand">
+
+        <svg
+          class="emblem"
+          viewBox="0 0 48 48"
+          fill="none"
+        >
+
+          <path
+            d="M24 3 L43 10 V22 C43 33 35 41 24 45 C13 41 5 33 5 22 V10 Z"
+            fill="#1C3252"
+            stroke="#7FA3E0"
+            stroke-width="1.5"
+          />
+
+          <path
+            d="M24 3 V45 C13 41 5 33 5 22 V10 Z"
+            fill="#2E5AAC"
+            opacity="0.55"
+          />
+
+          <path
+            d="M28 14c2 3-1 4-1 7 0 2 1.5 3 3 3 2 0 3.5-1.5 3.5-4 0-4-2.5-6-5.5-6z"
+            fill="#F0937C"
+          />
+
+        </svg>
+
+        <div class="brand-text">
+
+          <h1>
+            SIKOMPAK
+          </h1>
+
+          <div class="tag">
+            Satpol PP · Damkar
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="topbar-right">
+
+        <div class="admin-chip">
+
+          <div
+            class="admin-avatar"
+            id="avatar-initial"
+          >
+            A
+          </div>
+
+          <span id="admin-name-label">
+            Admin
+          </span>
+
+        </div>
+
+        <button
+          class="logout-btn"
+          onclick="handleLogout()"
+        >
+          Keluar
+        </button>
+
+      </div>
+
+    </header>
+
+    <main>
+
+      <div
+        class="stats-row"
+        id="stats-row"
+      ></div>
+
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <input type="search" id="search-input" placeholder="Cari laporan..." oninput="setSearch(this.value)">
+          </div>
+          <div class="filter-tabs" id="filter-tabs">
+            <button class="filter-tab active" data-filter="semua" onclick="setFilter('semua')">Semua</button>
+            <button class="filter-tab" data-filter="satpol" onclick="setFilter('satpol')">Satpol PP</button>
+            <button class="filter-tab" data-filter="damkar" onclick="setFilter('damkar')">Damkar</button>
+          </div>
+        </div>
+        <button class="btn btn-add" onclick="openModal()">+ Tambah Laporan</button>
+      </div>
+
+      <div id="list-container"></div>
+
+    </main>
+
+    <footer class="foot">
+      SIKOMPAK v1.0
+    </footer>
+
+  </div>
+
+  <!-- ================= MODAL ================= -->
+
+  <div
+    class="modal-overlay"
+    id="modal-overlay"
+  >
+
+    <div class="modal">
+
+      <div class="modal-head">
+
+        <h2>
+          Tambah Laporan
+        </h2>
+
+        <button
+          class="modal-close"
+          onclick="closeModal()"
+        >
+          ✕
+        </button>
+
+      </div>
+
+      <div
+        class="cat-tabs"
+        id="cat-tabs"
+      ></div>
+
+      <div class="modal-body">
+
+        <div
+          class="form-grid"
+          id="form-grid"
+        ></div>
+
+      </div>
+
+      <div class="modal-footer">
+
+        <button
+          class="btn btn-ghost"
+          onclick="closeModal()"
+        >
+          Batal
+        </button>
+
+        <button
+          class="btn btn-submit"
+          onclick="submitReport()"
+        >
+          Simpan Laporan
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ================= TOAST ================= -->
+
+  <div
+    class="toast"
+    id="toast"
+  >
+
+    <span class="tdot"></span>
+
+    <span id="toast-text">
+      Tersimpan
+    </span>
+
+  </div>
+
+  <script>
+
+    /* ================= CONFIG ================= */
+
+    const STORAGE_KEY =
+      'sikompak-data';
+
+    const STATUS_OPTIONS = [
+      'Belum Selesai',
+      'Proses',
+      'Selesai'
+    ];
+
+    const DAFTAR_ANGGOTA = [
+
+      'Andi Pratama',
+      'Budi Santoso',
+      'Cahyo Nugroho',
+      'Dedi Kurniawan',
+      'Eko Saputra',
+      'Fajar Ramadhan',
+      'Galih Prakoso',
+      'Hendra Wijaya',
+      'Indra Setiawan',
+      'Joko Susanto'
+
+    ];
+
+    const CATEGORY_CONFIG = {
+
+      /* ========== PENGENDALIAN ========== */
+
+      pengendalian:{
+
+        label:'Pengendalian',
+
+        sektor:'satpol',
+
+        icon:`
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2 L20 5 V11 C20 16 16.5 19.5 12 21 C7.5 19.5 4 16 4 11 V5 Z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+        `,
+
+        fields:[
+
+          {
+            key:'tanggal',
+            label:'Tanggal',
+            type:'date',
+            required:true
+          },
+
+          {
+            key:'lokasi',
+            label:'Lokasi',
+            type:'location',
+            required:true,
+            span2:true
+          },
+
+          {
+            key:'nomorPelapor',
+            label:'Nomor Pelapor / WhatsApp',
+            type:'tel',
+            required:true
+          },
+
+          {
+            key:'jenisKegiatan',
+            label:'Jenis Kegiatan',
+            type:'select',
+            required:true,
+
+            options:[
+              'Patroli Rutin',
+              'Pengawasan Ketertiban Umum',
+              'Sosialisasi Perda',
+              'Operasi Gabungan',
+              'Lainnya'
+            ]
+          },
+
+          {
+            key:'anggota',
+            label:'Anggota Regu',
+            type:'members',
+            required:true,
+            span2:true
+          },
+
+          {
+            key:'pemimpinRegu',
+            label:'Pemimpin Regu',
+            type:'leader',
+            required:true
+          },
+
+          {
+            key:'jumlahPersonel',
+            label:'Jumlah Personel',
+            type:'readonly'
+          },
+
+          {
+            key:'jumlahKendaraan',
+            label:'Jumlah Kendaraan',
+            type:'number'
+          },
+
+          {
+            key:'sasaran',
+            label:'Sasaran / Objek Pengawasan',
+            type:'text',
+            span2:true
+          },
+
+          {
+            key:'hasil',
+            label:'Hasil Kegiatan',
+            type:'textarea',
+            span2:true
+          },
+
+          {
+            key:'dokumentasi',
+            label:'Dokumentasi Gambar',
+            type:'images',
+            span2:true
+          },
+
+          {
+            key:'keterangan',
+            label:'Keterangan Tambahan',
+            type:'textarea',
+            span2:true
+          }
+
+        ]
+      },
+
+      /* ========== PENEGAKAN ========== */
+
+      penegakan:{
+
+        label:'Penegakan',
+
+        sektor:'satpol',
+
+        icon:`
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2v20"/>
+            <path d="M5 8h14"/>
+            <path d="M7 8l-3 6h6l-3-6z"/>
+            <path d="M17 8l-3 6h6l-3-6z"/>
+          </svg>
+        `,
+
+        fields:[
+
+          {
+            key:'tanggal',
+            label:'Tanggal',
+            type:'date',
+            required:true
+          },
+
+          {
+            key:'lokasi',
+            label:'Lokasi',
+            type:'location',
+            required:true,
+            span2:true
+          },
+
+          {
+            key:'nomorPelapor',
+            label:'Nomor Pelapor / WhatsApp',
+            type:'tel',
+            required:true
+          },
+
+          {
+            key:'jenisPelanggaran',
+            label:'Jenis Pelanggaran',
+            type:'select',
+            required:true,
+
+            options:[
+              'PKL Liar',
+              'Bangunan Tanpa Izin',
+              'Reklame Ilegal',
+              'Gangguan Ketertiban Umum',
+              'Lainnya'
+            ]
+          },
+
+          {
+            key:'tindakan',
+            label:'Tindakan',
+            type:'select',
+            required:true,
+
+            options:[
+              'Teguran Lisan',
+              'Teguran Tertulis',
+              'Penertiban',
+              'Penyitaan Barang',
+              'Pembongkaran'
+            ]
+          },
+
+          {
+            key:'anggota',
+            label:'Anggota Regu',
+            type:'members',
+            required:true,
+            span2:true
+          },
+
+          {
+            key:'pemimpinRegu',
+            label:'Pemimpin Regu',
+            type:'leader',
+            required:true
+          },
+
+          {
+            key:'jumlahPersonel',
+            label:'Jumlah Personel',
+            type:'readonly'
+          },
+
+          {
+            key:'jumlahPelanggar',
+            label:'Jumlah Pelanggar / Objek',
+            type:'number',
+            required:true
+          },
+
+          {
+            key:'keterangan',
+            label:'Keterangan Tambahan',
+            type:'textarea',
+            span2:true
+          },
+
+          {
+            key:'dokumentasi',
+            label:'Dokumentasi Gambar',
+            type:'images',
+            span2:true
+          }
+
+        ]
+      },
+
+      /* ========== PEMADAMAN ========== */
+
+      pemadaman:{
+
+        label:'Pemadaman',
+
+        sektor:'damkar',
+
+        icon:`
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2c2 3-1 4-1 7 0 2 1.5 3 3 3 2 0 3.5-1.5 3.5-4 0-4-2.5-6-5.5-6z"/>
+            <path d="M9.5 12c0 3 2.5 5.5 5.5 5.5S20.5 15 20.5 12c0-3.5-2.5-6-4.5-8"/>
+          </svg>
+        `,
+
+        fields:[
+
+          {
+            key:'tanggal',
+            label:'Tanggal',
+            type:'date',
+            required:true
+          },
+
+          {
+            key:'lokasi',
+            label:'Lokasi Kejadian',
+            type:'location',
+            required:true,
+            span2:true
+          },
+
+          {
+            key:'nomorPelapor',
+            label:'Nomor Pelapor / WhatsApp',
+            type:'tel',
+            required:true
+          },
+
+          {
+            key:'jenisKebakaran',
+            label:'Jenis Kebakaran',
+            type:'select',
+            required:true,
+
+            options:[
+              'Bangunan / Rumah',
+              'Kendaraan',
+              'Lahan / Kebun',
+              'Hutan',
+              'Instalasi Listrik',
+              'Lainnya'
+            ]
+          },
+
+          {
+            key:'waktuTiba',
+            label:'Waktu Tiba di Lokasi',
+            type:'time'
+          },
+
+          {
+            key:'anggota',
+            label:'Anggota Regu',
+            type:'members',
+            required:true,
+            span2:true
+          },
+
+          {
+            key:'pemimpinRegu',
+            label:'Pemimpin Regu',
+            type:'leader',
+            required:true
+          },
+
+          {
+            key:'jumlahPersonel',
+            label:'Jumlah Personel',
+            type:'readonly'
+          },
+
+          {
+            key:'jumlahUnit',
+            label:'Jumlah Unit Armada',
+            type:'number',
+            required:true
+          },
+
+          {
+            key:'korbanJiwa',
+            label:'Korban Jiwa',
+            type:'number'
+          },
+
+          {
+            key:'estimasiKerugian',
+            label:'Estimasi Kerugian (Rp)',
+            type:'number'
+          },
+
+          {
+            key:'dokumentasi',
+            label:'Dokumentasi Gambar',
+            type:'images',
+            span2:true
+          },
+
+          {
+            key:'keterangan',
+            label:'Keterangan Tambahan',
+            type:'textarea',
+            span2:true
+          }
+
+        ]
+      },
+
+      /* ========== PENYELAMATAN ========== */
+
+      penyelamatan:{
+
+        label:'Penyelamatan',
+
+        sektor:'damkar',
+
+        icon:`
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="12" cy="12" r="9"/>
+            <circle cx="12" cy="12" r="3.5"/>
+            <path d="M12 3v5.5"/>
+            <path d="M12 15.5V21"/>
+            <path d="M3 12h5.5"/>
+            <path d="M15.5 12H21"/>
+          </svg>
+        `,
+
+        fields:[
+
+          {
+            key:'tanggal',
+            label:'Tanggal',
+            type:'date',
+            required:true
+          },
+
+          {
+            key:'lokasi',
+            label:'Lokasi Kejadian',
+            type:'location',
+            required:true,
+            span2:true
+          },
+
+          {
+            key:'nomorPelapor',
+            label:'Nomor Pelapor / WhatsApp',
+            type:'tel',
+            required:true
+          },
+
+          {
+            key:'jenisKejadian',
+            label:'Jenis Kejadian',
+            type:'select',
+            required:true,
+
+            options:[
+              'Evakuasi Hewan',
+              'Pohon Tumbang',
+              'Banjir',
+              'Kecelakaan Lalu Lintas',
+              'Orang Terjebak',
+              'Lainnya'
+            ]
+          },
+
+          {
+            key:'anggota',
+            label:'Anggota Regu',
+            type:'members',
+            required:true,
+            span2:true
+          },
+
+          {
+            key:'pemimpinRegu',
+            label:'Pemimpin Regu',
+            type:'leader',
+            required:true
+          },
+
+          {
+            key:'jumlahPersonel',
+            label:'Jumlah Personel',
+            type:'readonly'
+          },
+
+          {
+            key:'jumlahKorbanDiselamatkan',
+            label:'Jumlah Korban Diselamatkan',
+            type:'number'
+          },
+
+          {
+            key:'dokumentasi',
+            label:'Dokumentasi Gambar',
+            type:'images',
+            span2:true
+          },
+
+          {
+            key:'keterangan',
+            label:'Keterangan Tambahan',
+            type:'textarea',
+            span2:true
+          }
+
+        ]
+      }
+
+    };
+
+    const CATEGORY_ORDER = [
+      'pengendalian',
+      'penegakan',
+      'pemadaman',
+      'penyelamatan'
+    ];
+
+    /* ================= DUMMY SEED DATA ================= */
+
+    const DUMMY_REPORTS = [
+
+      {
+        kategori:'pengendalian',
+        data:{
+          tanggal:'2026-08-10',
+          lokasi:'London, Inggris',
+          lokasiGoogleMaps:'https://www.google.com/maps/search/?api=1&query=London%2C%20Inggris',
+          nomorPelapor:'628123456701',
+          jenisKegiatan:'Patroli Rutin',
+          anggota:['Andi Pratama','Budi Santoso','Cahyo Nugroho'],
+          pemimpinRegu:'Andi Pratama',
+          jumlahPersonel:3,
+          jumlahKendaraan:2,
+          sasaran:'Kawasan pertokoan pusat kota',
+          hasil:'Situasi kondusif, tidak ditemukan pelanggaran berarti selama patroli.',
+          dokumentasi:[],
+          keterangan:'Patroli berjalan lancar tanpa kendala.',
+          status:'Selesai'
+        },
+        createdBy:'Admin'
+      },
+
+      {
+        kategori:'penegakan',
+        data:{
+          tanggal:'2026-08-14',
+          lokasi:'Beijing, Tiongkok',
+          lokasiGoogleMaps:'https://www.google.com/maps/search/?api=1&query=Beijing%2C%20Tiongkok',
+          nomorPelapor:'628123456702',
+          jenisPelanggaran:'PKL Liar',
+          tindakan:'Teguran Tertulis',
+          anggota:['Dedi Kurniawan','Eko Saputra'],
+          pemimpinRegu:'Dedi Kurniawan',
+          jumlahPersonel:2,
+          jumlahPelanggar:5,
+          keterangan:'Pedagang diberi peringatan tertulis dan diminta pindah ke lokasi resmi.',
+          dokumentasi:[],
+          status:'Proses'
+        },
+        createdBy:'Admin'
+      },
+
+      {
+        kategori:'pemadaman',
+        data:{
+          tanggal:'2026-08-18',
+          lokasi:'Washington DC, Amerika Serikat',
+          lokasiGoogleMaps:'https://www.google.com/maps/search/?api=1&query=Washington%20DC%2C%20Amerika%20Serikat',
+          nomorPelapor:'628123456703',
+          jenisKebakaran:'Bangunan / Rumah',
+          waktuTiba:'14:32',
+          anggota:['Fajar Ramadhan','Galih Prakoso','Hendra Wijaya','Indra Setiawan'],
+          pemimpinRegu:'Fajar Ramadhan',
+          jumlahPersonel:4,
+          jumlahUnit:2,
+          korbanJiwa:0,
+          estimasiKerugian:150000000,
+          dokumentasi:[],
+          keterangan:'Kebakaran akibat korsleting listrik, berhasil dipadamkan dalam 40 menit.',
+          status:'Belum Selesai'
+        },
+        createdBy:'Admin'
+      },
+
+      {
+        kategori:'penyelamatan',
+        data:{
+          tanggal:'2026-08-20',
+          lokasi:'Malang, Jawa Timur',
+          lokasiGoogleMaps:'https://www.google.com/maps/search/?api=1&query=Malang%2C%20Jawa%20Timur',
+          nomorPelapor:'628123456704',
+          jenisKejadian:'Pohon Tumbang',
+          anggota:['Joko Susanto','Andi Pratama'],
+          pemimpinRegu:'Joko Susanto',
+          jumlahPersonel:2,
+          jumlahKorbanDiselamatkan:0,
+          dokumentasi:[],
+          keterangan:'Pohon tumbang menutup jalan akibat hujan deras, evakuasi selesai tanpa korban.',
+          status:'Selesai'
+        },
+        createdBy:'Admin'
+      },
+
+      {
+        kategori:'pengendalian',
+        data:{
+          tanggal:'2026-08-22',
+          lokasi:'Kotabaru, Kalimantan Selatan',
+          lokasiGoogleMaps:'https://www.google.com/maps/search/?api=1&query=Kotabaru%2C%20Kalimantan%20Selatan',
+          nomorPelapor:'628123456705',
+          jenisKegiatan:'Operasi Gabungan',
+          anggota:['Budi Santoso','Cahyo Nugroho','Dedi Kurniawan'],
+          pemimpinRegu:'Budi Santoso',
+          jumlahPersonel:3,
+          jumlahKendaraan:3,
+          sasaran:'Pelabuhan dan area pasar rakyat',
+          hasil:'Operasi gabungan bersama instansi terkait berjalan tertib.',
+          dokumentasi:[],
+          keterangan:'',
+          status:'Proses'
+        },
+        createdBy:'Admin'
+      },
+
+      {
+        kategori:'pemadaman',
+        data:{
+          tanggal:'2026-08-23',
+          lokasi:'Kotabaru, Kalimantan Selatan',
+          lokasiGoogleMaps:'https://www.google.com/maps/search/?api=1&query=Kotabaru%2C%20Kalimantan%20Selatan',
+          nomorPelapor:'628123456706',
+          jenisKebakaran:'Kendaraan',
+          waktuTiba:'09:15',
+          anggota:['Eko Saputra','Galih Prakoso'],
+          pemimpinRegu:'Eko Saputra',
+          jumlahPersonel:2,
+          jumlahUnit:1,
+          korbanJiwa:0,
+          estimasiKerugian:35000000,
+          dokumentasi:[],
+          keterangan:'Kebakaran mobil di tepi jalan raya, berhasil dipadamkan cepat.',
+          status:'Belum Selesai'
+        },
+        createdBy:'Admin'
+      }
+
+    ];
+
+    function buildDummyReports(){
+
+      return DUMMY_REPORTS.map(
+        (item, idx) => ({
+          id:
+            'r_seed_' + idx + '_' +
+            Math.random().toString(36).slice(2,7),
+          kategori: item.kategori,
+          data: { ...item.data },
+          createdAt: Date.now() - (DUMMY_REPORTS.length - idx) * 60000,
+          createdBy: item.createdBy
+        })
+      );
+
+    }
+
+    const SEKTOR_LABEL = {
+
+      satpol:'Satpol PP',
+
+      damkar:'Damkar'
+
+    };
+
+    /* ================= STATE ================= */
+
+    let reports = [];
+
+    let currentFilter =
+      'semua';
+
+    let currentSearch =
+      '';
+
+    let activeCategory =
+      'pengendalian';
+
+    let adminName =
+      'Admin';
+
+    /* ================= STORAGE ================= */
+
+    async function loadReports(){
+
+      try{
+
+        if(
+          window.storage &&
+          window.storage.get
+        ){
+
+          const res =
+            await window.storage.get(
+              STORAGE_KEY,
+              true
+            );
+
+          reports =
+            res &&
+            res.value
+              ? JSON.parse(res.value)
+              : [];
+
+        }else{
+
+          const saved =
+            localStorage.getItem(
+              STORAGE_KEY
+            );
+
+          reports =
+            saved
+              ? JSON.parse(saved)
+              : [];
+
+        }
+
+      }catch(e){
+
+        console.error(e);
+
+        reports = [];
+
+      }
+
+    }
+
+    async function saveReports(){
+
+      try{
+
+        const data =
+          JSON.stringify(reports);
+
+        if(
+          window.storage &&
+          window.storage.set
+        ){
+
+          await window.storage.set(
+            STORAGE_KEY,
+            data,
+            true
+          );
+
+        }else{
+
+          localStorage.setItem(
+            STORAGE_KEY,
+            data
+          );
+
+        }
+
+      }catch(e){
+
+        console.error(e);
+
+        showToast(
+          'Gagal menyimpan data',
+          true
+        );
+
+      }
+
+    }
+
+    /* ================= LOGIN ================= */
+
+    function handleLogin(){
+
+      const u =
+        document
+          .getElementById(
+            'input-username'
+          )
+          .value
+          .trim();
+
+      const p =
+        document
+          .getElementById(
+            'input-password'
+          )
+          .value;
+
+      const err =
+        document.getElementById(
+          'login-error'
+        );
+
+      if(
+        u === 'admin' &&
+        p === 'admin123'
+      ){
+
+        err.style.display =
+          'none';
+
+        adminName =
+          u.charAt(0).toUpperCase() +
+          u.slice(1);
+
+        document
+          .getElementById(
+            'admin-name-label'
+          )
+          .textContent =
+            adminName;
+
+        document
+          .getElementById(
+            'avatar-initial'
+          )
+          .textContent =
+            adminName
+              .charAt(0)
+              .toUpperCase();
+
+        document
+          .getElementById(
+            'login-screen'
+          )
+          .style.display =
+            'none';
+
+        document
+          .getElementById(
+            'app-screen'
+          )
+          .style.display =
+            'flex';
+
+        init();
+
+      }else{
+
+        err.style.display =
+          'block';
+
+      }
+
+    }
+
+    function togglePassword(){
+  const input=document.getElementById('input-password');
+  const icon=document.getElementById('eye-icon');
+  const showing=input.type==='text';
+  input.type=showing?'password':'text';
+  icon.innerHTML=showing
+    ? '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'
+    : '<path d="m3 3 18 18"/><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a18.2 18.2 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.5 7 10 7a10.6 10.6 0 0 0 3.8-.7"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>';
+}
+function handleLogout(){
+
+      document
+        .getElementById(
+          'app-screen'
+        )
+        .style.display =
+          'none';
+
+      document
+        .getElementById(
+          'login-screen'
+        )
+        .style.display =
+          'flex';
+
+      document
+        .getElementById(
+          'input-password'
+        )
+        .value =
+          '';
+
+    }
+
+    document.addEventListener(
+      'keydown',
+      function(e){
+
+        if(
+          e.key === 'Enter' &&
+          document
+            .getElementById(
+              'login-screen'
+            )
+            .style.display !== 'none'
+        ){
+
+          handleLogin();
+
+        }
+
+      }
+    );
+
+    /* ================= INIT ================= */
+
+    async function init(){
+
+      await loadReports();
+
+      if(
+        reports.length === 0
+      ){
+
+        reports =
+          buildDummyReports();
+
+        await saveReports();
+
+      }
+
+      renderStats();
+
+      renderList();
+
+    }
+
+    /* ================= STATS ================= */
+
+    function renderStats(){
+
+      const el =
+        document.getElementById(
+          'stats-row'
+        );
+
+      el.innerHTML =
+        CATEGORY_ORDER
+          .map(cat=>{
+
+            const cfg =
+              CATEGORY_CONFIG[cat];
+
+            const count =
+              reports.filter(
+                r =>
+                  r.kategori === cat
+              ).length;
+
+            return `
+              <div class="stat-card c-${cat}">
+
+                <div class="num">
+                  ${String(count).padStart(2,'0')}
+                </div>
+
+                <div class="label">
+                  ${cfg.label}
+                </div>
+
+                <div class="sektor-mini">
+                  ${SEKTOR_LABEL[cfg.sektor]}
+                </div>
+
+              </div>
+            `;
+
+          })
+          .join('');
+
+    }
+
+    /* ================= FILTER / SEARCH ================= */
+
+    function setFilter(f){
+
+      currentFilter = f;
+
+      document
+        .querySelectorAll(
+          '.filter-tab'
+        )
+        .forEach(btn=>{
+
+          btn.classList.toggle(
+            'active',
+            btn.dataset.filter === f
+          );
+
+        });
+
+      renderList();
+
+    }
+
+    function setSearch(value){
+
+      currentSearch =
+        value.trim().toLowerCase();
+
+      renderList();
+
+    }
+
+    function getStatusClass(status){
+
+      return status === 'Selesai'
+        ? 'status-selesai'
+        : status === 'Proses'
+          ? 'status-proses'
+          : 'status-belum-selesai';
+
+    }
+
+    /* ================= LIST ================= */
+
+    function renderList(){
+
+      const container =
+        document.getElementById(
+          'list-container'
+        );
+
+      let filtered =
+        reports
+          .slice()
+          .sort(
+            (a,b)=>
+
+              (b.data.tanggal || '')
+                .localeCompare(
+                  a.data.tanggal || ''
+                )
+
+              ||
+
+              b.createdAt -
+              a.createdAt
+          );
+
+      if(
+        currentFilter !== 'semua'
+      ){
+
+        filtered =
+          filtered.filter(
+            r =>
+              CATEGORY_CONFIG[
+                r.kategori
+              ].sektor === currentFilter
+          );
+
+      }
+
+      if(
+        currentSearch
+      ){
+
+        filtered =
+          filtered.filter(r=>{
+
+            const cfg =
+              CATEGORY_CONFIG[
+                r.kategori
+              ];
+
+            const haystack = [
+              r.data.lokasi,
+              r.data.keterangan,
+              r.data.hasil,
+              r.data.nomorPelapor,
+              r.data.jenisKegiatan,
+              r.data.jenisPelanggaran,
+              r.data.jenisKebakaran,
+              r.data.jenisKejadian,
+              r.data.status,
+              cfg.label,
+              SEKTOR_LABEL[cfg.sektor]
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+
+            return haystack.includes(
+              currentSearch
+            );
+
+          });
+
+      }
+
+      if(
+        filtered.length === 0
+      ){
+
+        container.innerHTML = `
+          <div class="empty-state">
+
+            <div class="display">
+              Belum ada laporan
+            </div>
+
+            <div>
+              Klik "+ Tambah Laporan"
+              untuk mulai mencatat
+              kegiatan lapangan.
+            </div>
+
+          </div>
+        `;
+
+        return;
+
+      }
+
+      container.innerHTML = `
+        <div class="report-list">
+
+          ${
+            filtered
+              .map(r =>
+                renderCard(r)
+              )
+              .join('')
+          }
+
+        </div>
+      `;
+
+    }
+
+    /* ================= CARD ================= */
+
+    function renderCard(r){
+
+      const cfg =
+        CATEGORY_CONFIG[
+          r.kategori
+        ];
+
+      const sektorClass =
+        cfg.sektor === 'satpol'
+          ? 'sk-satpol'
+          : 'sk-damkar';
+
+      const badgeClass =
+        cfg.sektor === 'satpol'
+          ? 'b-satpol'
+          : 'b-damkar';
+
+      const status =
+        r.data.status ||
+        'Belum Selesai';
+
+      const detailFields =
+        cfg.fields.filter(
+          f =>
+            f.key !== 'keterangan' &&
+            f.key !== 'hasil' &&
+            f.key !== 'dokumentasi'
+        );
+
+      const longFields =
+        cfg.fields.filter(
+          f =>
+            f.key === 'keterangan' ||
+            f.key === 'hasil'
+        );
+
+      const detailHtml =
+        detailFields
+          .map(f=>{
+
+            const val =
+              r.data[f.key];
+
+            if(
+              val === undefined ||
+              val === '' ||
+              val === null ||
+              (
+                Array.isArray(val) &&
+                val.length === 0
+              )
+            ){
+              return '';
+            }
+
+            let displayValue =
+              val;
+
+            if(
+              Array.isArray(val)
+            ){
+
+              displayValue =
+                val.join(', ');
+
+            }
+
+            if(
+              f.key === 'nomorPelapor'
+            ){
+
+              return `
+                <div class="detail-item">
+
+                  <div class="dl">
+                    ${f.label}
+                  </div>
+
+                  <div class="dv">
+
+                    <a
+                      class="phone-link"
+                      href="https://wa.me/${formatWhatsAppNumber(val)}"
+                      target="_blank"
+                      onclick="event.stopPropagation()"
+                    >
+                      ${escapeHtml(String(val))}
+                    </a>
+
+                  </div>
+
+                </div>
+              `;
+
+            }
+
+            if(
+              f.key === 'lokasi'
+            ){
+
+              const koordinat =
+                r.data.lokasiKoordinat;
+
+              const gmaps =
+                r.data.lokasiGoogleMaps;
+
+              /* Kalau isi field lokasi ternyata masih
+                 berupa koordinat mentah (reverse geocoding
+                 gagal/tidak dijalankan), tampilkan pesan
+                 alih-alih koordinat sebagai "alamat". */
+
+              const isRawCoordinate =
+                extractLatLng(
+                  String(val)
+                ) !== null;
+
+              const alamatDisplay =
+                isRawCoordinate && koordinat
+                  ? 'Koordinat lokasi tidak berhasil diterjemahkan menjadi alamat'
+                  : String(val);
+
+              return `
+                <div class="detail-item full">
+
+                  <div class="dl">
+                    ${f.label}
+                  </div>
+
+                  <div class="dv">
+                    ${escapeHtml(alamatDisplay)}
+                    ${
+                      koordinat
+                        ? ` <span class="mono" style="color:var(--ink-faint);font-size:12.5px;">(${escapeHtml(koordinat)})</span>`
+                        : ''
+                    }
+                  </div>
+
+                  ${
+                    gmaps
+                      ? `
+                        <div class="detail-loc-meta">
+
+                          <a
+                            class="loc-maps-link"
+                            href="${escapeHtml(gmaps)}"
+                            target="_blank"
+                            onclick="event.stopPropagation()"
+                          >
+                            🗺️ Buka Google Maps ↗
+                          </a>
+
+                        </div>
+                      `
+                      : ''
+                  }
+
+                </div>
+              `;
+
+            }
+
+            return `
+              <div class="detail-item">
+
+                <div class="dl">
+                  ${f.label}
+                </div>
+
+                <div class="dv">
+                  ${escapeHtml(
+                    String(displayValue)
+                  )}
+                </div>
+
+              </div>
+            `;
+
+          })
+          .join('')
+
+        +
+
+        longFields
+          .map(f=>{
+
+            const val =
+              r.data[f.key];
+
+            if(!val){
+              return '';
+            }
+
+            return `
+              <div class="detail-item full">
+
+                <div class="dl">
+                  ${f.label}
+                </div>
+
+                <div class="dv">
+                  ${escapeHtml(val)}
+                </div>
+
+              </div>
+            `;
+
+          })
+          .join('')
+
+        +
+
+        renderDocumentation(
+          r.data.dokumentasi
+        );
+
+      const subtitleParts = [];
+
+      if(
+        r.data.jenisKegiatan
+      ){
+
+        subtitleParts.push(
+          r.data.jenisKegiatan
+        );
+
+      }
+
+      if(
+        r.data.jenisPelanggaran
+      ){
+
+        subtitleParts.push(
+          r.data.jenisPelanggaran +
+          ' — ' +
+          (
+            r.data.tindakan ||
+            ''
+          )
+        );
+
+      }
+
+      if(
+        r.data.jenisKebakaran
+      ){
+
+        subtitleParts.push(
+          r.data.jenisKebakaran
+        );
+
+      }
+
+      if(
+        r.data.jenisKejadian
+      ){
+
+        subtitleParts.push(
+          r.data.jenisKejadian
+        );
+
+      }
+
+      return `
+        <div
+          class="report-card ${sektorClass}"
+          onclick="toggleDetail('${r.id}', event)"
+        >
+
+          <div class="spine"></div>
+
+          <div class="rc-main">
+
+            <div class="rc-top">
+
+              <span
+                class="badge ${badgeClass}"
+              >
+
+                ${SEKTOR_LABEL[cfg.sektor]}
+                ·
+                ${cfg.label}
+
+              </span>
+
+              <select
+                class="status-select ${getStatusClass(status)}"
+                onclick="event.stopPropagation()"
+                onchange="updateStatus('${r.id}', this.value)"
+              >
+
+                ${
+                  STATUS_OPTIONS
+                    .map(
+                      opt => `
+                        <option
+                          value="${opt}"
+                          ${opt === status ? 'selected' : ''}
+                        >
+                          ${opt}
+                        </option>
+                      `
+                    )
+                    .join('')
+                }
+
+              </select>
+
+              <span class="rc-date mono">
+
+                ${formatDate(
+                  r.data.tanggal
+                )}
+
+              </span>
+
+            </div>
+
+            <div class="rc-loc">
+
+              ${
+                escapeHtml(
+                  r.data.lokasi ||
+                  '(Lokasi tidak diisi)'
+                )
+              }
+
+            </div>
+
+            <div class="rc-sub">
+
+              ${
+                escapeHtml(
+                  subtitleParts.join(' · ')
+                )
+              }
+
+            </div>
+
+            ${
+              r.data.nomorPelapor
+              ? `
+                <div
+                  class="rc-sub"
+                  style="margin-top:6px"
+                >
+
+                  Pelapor:
+
+                  <a
+                    href="https://wa.me/${formatWhatsAppNumber(r.data.nomorPelapor)}"
+                    target="_blank"
+                    class="phone-link"
+                    onclick="event.stopPropagation()"
+                  >
+
+                    ${
+                      escapeHtml(
+                        r.data.nomorPelapor
+                      )
+                    }
+
+                  </a>
+
+                </div>
+              `
+              : ''
+            }
+
+            <div
+              class="rc-detail"
+              id="detail-${r.id}"
+            >
+
+              ${detailHtml}
+
+            </div>
+
+          </div>
+
+          <div class="rc-actions">
+
+            <button
+              class="icon-btn"
+              title="Hapus"
+              onclick="deleteReport('${r.id}', event)"
+            >
+
+              🗑
+
+            </button>
+
+          </div>
+
+        </div>
+      `;
+
+    }
+
+    function renderDocumentation(images){
+
+      if(
+        !images ||
+        !Array.isArray(images) ||
+        images.length === 0
+      ){
+        return '';
+      }
+
+      return `
+        <div class="detail-item full">
+
+          <div class="dl">
+            Dokumentasi
+          </div>
+
+          <div class="documentation-grid">
+
+            ${
+              images
+                .map(
+                  img => `
+                    <img
+                      src="${img}"
+                      alt="Dokumentasi Laporan"
+                      onclick="event.stopPropagation(); window.open(this.src, '_blank')"
+                    >
+                  `
+                )
+                .join('')
+            }
+
+          </div>
+
+        </div>
+      `;
+
+    }
+
+    function toggleDetail(
+      id,
+      ev
+    ){
+
+      if(
+        ev.target.closest(
+          '.icon-btn'
+        ) ||
+        ev.target.closest(
+          '.status-select'
+        )
+      ){
+        return;
+      }
+
+      const el =
+        document.getElementById(
+          'detail-' + id
+        );
+
+      if(el){
+
+        el.classList.toggle(
+          'open'
+        );
+
+      }
+
+    }
+
+    async function updateStatus(
+      id,
+      newStatus
+    ){
+
+      const r =
+        reports.find(
+          x =>
+            x.id === id
+        );
+
+      if(!r){
+        return;
+      }
+
+      r.data.status =
+        newStatus;
+
+      await saveReports();
+
+      showToast(
+        'Status diperbarui ke "' +
+        newStatus +
+        '"'
+      );
+
+    }
+
+    async function deleteReport(
+      id,
+      ev
+    ){
+
+      ev.stopPropagation();
+
+      if(
+        !confirm(
+          'Hapus laporan ini?'
+        )
+      ){
+        return;
+      }
+
+      reports =
+        reports.filter(
+          r =>
+            r.id !== id
+        );
+
+      await saveReports();
+
+      renderStats();
+
+      renderList();
+
+      showToast(
+        'Laporan dihapus'
+      );
+
+    }
+
+    /* ================= MODAL ================= */
+
+    function openModal(){
+
+      activeCategory =
+        'pengendalian';
+
+      renderCatTabs();
+
+      renderForm();
+
+      document
+        .getElementById(
+          'modal-overlay'
+        )
+        .classList
+        .add('open');
+
+    }
+
+    function closeModal(){
+
+      document
+        .getElementById(
+          'modal-overlay'
+        )
+        .classList
+        .remove('open');
+
+    }
+
+    function renderCatTabs(){
+
+      const el =
+        document.getElementById(
+          'cat-tabs'
+        );
+
+      el.innerHTML =
+        CATEGORY_ORDER
+          .map(cat=>{
+
+            const cfg =
+              CATEGORY_CONFIG[cat];
+
+            const active =
+              cat === activeCategory
+                ? 'active'
+                : '';
+
+            return `
+              <button
+                type="button"
+                class="cat-tab ${active} ${cfg.sektor}"
+                onclick="selectCategory('${cat}')"
+              >
+
+                ${cfg.icon}
+
+                <span>
+                  ${cfg.label}
+                </span>
+
+              </button>
+            `;
+
+          })
+          .join('');
+
+    }
+
+    function selectCategory(cat){
+
+      activeCategory =
+        cat;
+
+      renderCatTabs();
+
+      renderForm();
+
+    }
+
+    /* ================= FORM ================= */
+
+    function renderForm(){
+
+      const cfg =
+        CATEGORY_CONFIG[
+          activeCategory
+        ];
+
+      const el =
+        document.getElementById(
+          'form-grid'
+        );
+
+      el.innerHTML =
+        cfg.fields
+          .map(f=>{
+
+            const spanClass =
+              f.span2 ||
+              f.type === 'textarea' ||
+              f.type === 'members' ||
+              f.type === 'images' ||
+              f.type === 'location'
+                ? 'span2'
+                : '';
+
+            let input =
+              '';
+
+            /* LOCATION */
+
+            if(
+              f.type === 'location'
+            ){
+
+              input = `
+                <div class="location-box">
+
+                  <input
+                    type="text"
+                    id="f-${f.key}"
+                    placeholder="Masukkan alamat / koordinat / Share Location WhatsApp"
+                  >
+
+                  <div class="loc-btn-row">
+
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-sm"
+                      onclick="ubahKeAlamat('${f.key}', this)"
+                    >
+                      📍 Ubah ke Alamat
+                    </button>
+
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-sm"
+                      onclick="bukaGoogleMaps('${f.key}')"
+                    >
+                      🗺️ Buka Google Maps
+                    </button>
+
+                  </div>
+
+                </div>
+              `;
+
+            }
+
+            /* SELECT */
+
+            else if(
+              f.type === 'select'
+            ){
+
+              input = `
+                <select id="f-${f.key}">
+
+                  <option value="">
+                    Pilih...
+                  </option>
+
+                  ${
+                    f.options
+                      .map(
+                        o => `
+                          <option value="${o}">
+                            ${o}
+                          </option>
+                        `
+                      )
+                      .join('')
+                  }
+
+                </select>
+              `;
+
+            }
+
+            /* TEXTAREA */
+
+            else if(
+              f.type === 'textarea'
+            ){
+
+              input = `
+                <textarea
+                  id="f-${f.key}"
+                  rows="3"
+                  placeholder="${f.placeholder || ''}"
+                ></textarea>
+              `;
+
+            }
+
+            /* MEMBER */
+
+            else if(
+              f.type === 'members'
+            ){
+
+              input = `
+                <div class="member-box">
+
+                  <div class="search-box" style="margin-bottom:14px;max-width:560px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <input type="search" id="member-search-input" placeholder="Cari anggota..." oninput="setMemberSearch(this.value)">
+          </div>
+          <div class="member-list" id="member-list">
+
+                    ${
+                      DAFTAR_ANGGOTA
+                        .map(
+                          nama => `
+                            <label
+                              class="member-item"
+                              data-nama="${nama.toLowerCase()}"
+                            >
+
+                              <input
+                                type="checkbox"
+                                class="member-checkbox"
+                                value="${nama}"
+                                onchange="updateMemberCount()"
+                              >
+
+                              <span>
+                                ${nama}
+                              </span>
+
+                            </label>
+                          `
+                        )
+                        .join('')
+                    }
+
+                  </div>
+
+                  <div class="member-count">
+
+                    Jumlah anggota dipilih:
+
+                    <span
+                      id="member-count"
+                    >
+                      0
+                    </span>
+
+                  </div>
+
+                </div>
+              `;
+
+            }
+
+            /* LEADER */
+
+            else if(
+              f.type === 'leader'
+            ){
+
+              input = `
+                <select
+                  id="f-${f.key}"
+                >
+
+                  <option value="">
+                    Pilih Pemimpin Regu...
+                  </option>
+
+                </select>
+              `;
+
+            }
+
+            /* READONLY */
+
+            else if(
+              f.type === 'readonly'
+            ){
+
+              input = `
+                <input
+                  type="number"
+                  id="f-${f.key}"
+                  value="0"
+                  readonly
+                >
+              `;
+
+            }
+
+            /* IMAGES */
+
+            else if(
+              f.type === 'images'
+            ){
+
+              input = `
+                <input
+                  type="file"
+                  id="f-${f.key}"
+                  accept="image/*"
+                  multiple
+                  onchange="previewImages(this)"
+                >
+
+                <div
+                  class="image-preview"
+                  id="image-preview"
+                ></div>
+
+                <small
+                  style="
+                    color:var(--ink-faint);
+                    font-size:11px;
+                    display:block;
+                    margin-top:8px;
+                  "
+                >
+
+                  Maksimal 3 gambar.
+
+                </small>
+              `;
+
+            }
+
+            /* NORMAL INPUT */
+
+            else{
+
+              input = `
+                <input
+                  type="${f.type}"
+                  id="f-${f.key}"
+                  placeholder="${f.placeholder || ''}"
+                >
+              `;
+
+            }
+
+            return `
+              <div
+                class="field ${spanClass}"
+              >
+
+                <label>
+
+                  ${f.label}
+
+                  ${
+                    f.required
+                      ? `
+                        <span class="req">
+                          *
+                        </span>
+                      `
+                      : ''
+                  }
+
+                </label>
+
+                ${input}
+
+              </div>
+            `;
+
+          })
+          .join('');
+
+    }
+
+    /* ================= LOCATION FIELD ================= */
+
+    /* ---- DMS parser: 7°56'25.1"S 112°37'27.9"E dan variasinya ---- */
+
+    function parseDMS(text){
+
+      if(!text) return null;
+
+      const re =
+        /(\d{1,3})\s*[°ºo]\s*(\d{1,2})\s*['′]\s*(\d+(?:\.\d+)?)\s*(?:["″]|'')?\s*([NnSsEeWw])/g;
+
+      let m;
+
+      let lat =
+        null;
+
+      let lng =
+        null;
+
+      while(
+        (m = re.exec(text)) !== null
+      ){
+
+        const deg =
+          parseFloat(m[1]);
+
+        const min =
+          parseFloat(m[2]);
+
+        const sec =
+          parseFloat(m[3]);
+
+        const dir =
+          m[4].toUpperCase();
+
+        let dec =
+          deg +
+          (min / 60) +
+          (sec / 3600);
+
+        if(
+          dir === 'S' ||
+          dir === 'W'
+        ){
+          dec =
+            -dec;
+        }
+
+        if(
+          dir === 'N' ||
+          dir === 'S'
+        ){
+          lat =
+            dec;
+        } else {
+          lng =
+            dec;
+        }
+
+      }
+
+      if(
+        lat !== null &&
+        lng !== null
+      ){
+        return { lat, lng };
+      }
+
+      return null;
+
+    }
+
+    /* ---- Validasi rentang koordinat ---- */
+
+    function isValidLatLng(lat, lng){
+
+      return (
+        !isNaN(lat) &&
+        !isNaN(lng) &&
+        lat >= -90 && lat <= 90 &&
+        lng >= -180 && lng <= 180
+      );
+
+    }
+
+    /* ---- Parser gabungan: link Maps, decimal, berlabel, DMS ---- */
+
+    function extractLatLng(text){
+
+      if(!text) return null;
+
+      const t =
+        text.trim();
+
+      if(!t) return null;
+
+      /* Link Share Location WhatsApp / Google Maps: ?q=LAT,LNG */
+      let m =
+        t.match(
+          /[?&]q=(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)/
+        );
+
+      /* Link Google Maps: @LAT,LNG,zoom */
+      if(!m){
+        m =
+          t.match(
+            /@(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)/
+          );
+      }
+
+      /* Berlabel: "Lat: -7.9, Lng: 112.6" */
+      if(!m){
+        m =
+          t.match(
+            /lat(?:itude)?[:\s]*(-?\d{1,3}\.\d+)[,\s]+(?:lng|lon|long(?:itude)?)[:\s]*(-?\d{1,3}\.\d+)/i
+          );
+      }
+
+      /* Decimal dengan koma: "-7.9,112.6" */
+      if(!m){
+        m =
+          t.match(
+            /(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/
+          );
+      }
+
+      /* Decimal dengan spasi: "-7.9 112.6" */
+      if(!m){
+        m =
+          t.match(
+            /(-?\d{1,3}\.\d+)\s+(-?\d{1,3}\.\d+)/
+          );
+      }
+
+      if(m){
+
+        const lat =
+          parseFloat(m[1]);
+
+        const lng =
+          parseFloat(m[2]);
+
+        if(
+          isValidLatLng(lat, lng)
+        ){
+          return { lat, lng };
+        }
+
+      }
+
+      /* Terakhir, coba format DMS */
+
+      const dms =
+        parseDMS(t);
+
+      if(
+        dms &&
+        isValidLatLng(dms.lat, dms.lng)
+      ){
+        return dms;
+      }
+
+      return null;
+
+    }
+
+    /* ---- Reverse geocoding: koordinat -> alamat ---- */
+
+    async function reverseGeocode(lat, lng){
+
+      try{
+
+        const res =
+          await fetch(
+            'https://nominatim.openstreetmap.org/reverse?format=json&lat=' +
+            lat +
+            '&lon=' +
+            lng +
+            '&zoom=18&addressdetails=0'
+          );
+
+        if(!res.ok) return null;
+
+        const json =
+          await res.json();
+
+        return (
+          json &&
+          json.display_name
+        ) || null;
+
+      } catch(err){
+
+        return null;
+
+      }
+
+    }
+
+    /* ---- Forward geocoding: alamat -> koordinat ---- */
+
+    async function geocodeAlamat(alamat){
+
+      try{
+
+        const res =
+          await fetch(
+            'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
+            encodeURIComponent(alamat)
+          );
+
+        if(!res.ok) return null;
+
+        const json =
+          await res.json();
+
+        if(
+          json &&
+          json.length > 0
+        ){
+
+          const lat =
+            parseFloat(json[0].lat);
+
+          const lng =
+            parseFloat(json[0].lon);
+
+          if(
+            isValidLatLng(lat, lng)
+          ){
+            return { lat, lng };
+          }
+
+        }
+
+        return null;
+
+      } catch(err){
+
+        return null;
+
+      }
+
+    }
+
+    function buildMapsUrlFromKoordinat(koordinat){
+
+      return (
+        'https://maps.google.com/?q=' +
+        koordinat
+      );
+
+    }
+
+    function buildMapsUrlFromAlamat(alamat){
+
+      return (
+        'https://www.google.com/maps/search/?api=1&query=' +
+        encodeURIComponent(alamat)
+      );
+
+    }
+
+    /* ---- Tombol "Ubah ke Alamat" ---- */
+
+    async function ubahKeAlamat(key, btn){
+
+      const el =
+        document.getElementById(
+          'f-' + key
+        );
+
+      const raw =
+        el.value.trim();
+
+      if(!raw){
+
+        showToast(
+          '⚠️ Isi lokasi terlebih dahulu.',
+          true
+        );
+
+        return;
+
+      }
+
+      const originalLabel =
+        btn ? btn.textContent : '';
+
+      if(btn){
+        btn.disabled = true;
+        btn.textContent = 'Memproses...';
+      }
+
+      try{
+
+        const coords =
+          extractLatLng(raw);
+
+        if(coords){
+
+          const koordStr =
+            coords.lat.toFixed(6) +
+            ',' +
+            coords.lng.toFixed(6);
+
+          el.dataset.koordinat =
+            koordStr;
+
+          el.dataset.maps =
+            buildMapsUrlFromKoordinat(
+              koordStr
+            );
+
+          const alamat =
+            await reverseGeocode(
+              coords.lat,
+              coords.lng
+            );
+
+          if(alamat){
+
+            el.value =
+              alamat;
+
+            showToast(
+              'Alamat berhasil dideteksi. Bisa diedit manual jika kurang tepat.'
+            );
+
+          } else {
+
+            showToast(
+              '⚠️ Lokasi berhasil dibaca, tetapi alamat tidak dapat ditemukan. Koordinat tetap disimpan.',
+              true
+            );
+
+          }
+
+        } else {
+
+          const geo =
+            await geocodeAlamat(raw);
+
+          if(geo){
+
+            const koordStr =
+              geo.lat.toFixed(6) +
+              ',' +
+              geo.lng.toFixed(6);
+
+            el.dataset.koordinat =
+              koordStr;
+
+            el.dataset.maps =
+              buildMapsUrlFromKoordinat(
+                koordStr
+              );
+
+            showToast(
+              'Koordinat berhasil ditemukan untuk alamat ini.'
+            );
+
+          } else {
+
+            el.dataset.maps =
+              buildMapsUrlFromAlamat(
+                raw
+              );
+
+            showToast(
+              '⚠️ Koordinat tidak dikenali. Alamat tetap disimpan apa adanya.',
+              true
+            );
+
+          }
+
+        }
+
+      } catch(err){
+
+        showToast(
+          '⚠️ Gagal memproses lokasi. Periksa koneksi internet.',
+          true
+        );
+
+      } finally{
+
+        if(btn){
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+        }
+
+      }
+
+    }
+
+    /* ---- Tombol "Buka Google Maps" ---- */
+
+    function bukaGoogleMaps(key){
+
+      const el =
+        document.getElementById(
+          'f-' + key
+        );
+
+      const raw =
+        el.value.trim();
+
+      if(
+        !raw &&
+        !el.dataset.koordinat
+      ){
+
+        showToast(
+          '⚠️ Isi lokasi terlebih dahulu.',
+          true
+        );
+
+        return;
+
+      }
+
+      let url =
+        el.dataset.maps;
+
+      if(!url){
+
+        if(el.dataset.koordinat){
+
+          url =
+            buildMapsUrlFromKoordinat(
+              el.dataset.koordinat
+            );
+
+        } else {
+
+          const coords =
+            extractLatLng(raw);
+
+          if(coords){
+
+            const koordStr =
+              coords.lat.toFixed(6) +
+              ',' +
+              coords.lng.toFixed(6);
+
+            el.dataset.koordinat =
+              koordStr;
+
+            url =
+              buildMapsUrlFromKoordinat(
+                koordStr
+              );
+
+          } else {
+
+            url =
+              buildMapsUrlFromAlamat(
+                raw
+              );
+
+          }
+
+        }
+
+        el.dataset.maps =
+          url;
+
+      }
+
+      window.open(
+        url,
+        '_blank'
+      );
+
+    }
+
+    /* ================= MEMBER SEARCH / COUNT ================= */
+
+    function setMemberSearch(value){
+
+      const q =
+        value.trim().toLowerCase();
+
+      document
+        .querySelectorAll(
+          '#member-list .member-item'
+        )
+        .forEach(item=>{
+
+          const nama =
+            item.dataset.nama ||
+            item.textContent
+              .trim()
+              .toLowerCase();
+
+          item.style.display =
+            nama.includes(q)
+              ? 'flex'
+              : 'none';
+
+        });
+
+    }
+
+    function updateMemberCount(){
+
+      const checked =
+        Array.from(
+          document.querySelectorAll(
+            '.member-checkbox:checked'
+          )
+        );
+
+      const count =
+        checked.length;
+
+      const countLabel =
+        document.getElementById(
+          'member-count'
+        );
+
+      const jumlahInput =
+        document.getElementById(
+          'f-jumlahPersonel'
+        );
+
+      const leaderSelect =
+        document.getElementById(
+          'f-pemimpinRegu'
+        );
+
+      if(countLabel){
+
+        countLabel.textContent =
+          count;
+
+      }
+
+      if(jumlahInput){
+
+        jumlahInput.value =
+          count;
+
+      }
+
+      if(leaderSelect){
+
+        const previousValue =
+          leaderSelect.value;
+
+        leaderSelect.innerHTML = `
+          <option value="">
+            Pilih Pemimpin Regu...
+          </option>
+
+          ${
+            checked
+              .map(
+                el => `
+                  <option
+                    value="${el.value}"
+                  >
+                    ${el.value}
+                  </option>
+                `
+              )
+              .join('')
+          }
+        `;
+
+        if(
+          checked.some(
+            el =>
+              el.value === previousValue
+          )
+        ){
+
+          leaderSelect.value =
+            previousValue;
+
+        }
+
+      }
+
+    }
+
+    /* ================= IMAGE PREVIEW ================= */
+
+    function previewImages(input){
+
+      const preview =
+        document.getElementById(
+          'image-preview'
+        );
+
+      preview.innerHTML =
+        '';
+
+      const files =
+        Array.from(
+          input.files
+        );
+
+      if(
+        files.length > 3
+      ){
+
+        showToast(
+          'Maksimal hanya 3 gambar',
+          true
+        );
+
+        input.value =
+          '';
+
+        return;
+
+      }
+
+      files.forEach(file=>{
+
+        if(
+          !file.type.startsWith(
+            'image/'
+          )
+        ){
+          return;
+        }
+
+        const reader =
+          new FileReader();
+
+        reader.onload =
+          function(e){
+
+            const img =
+              document.createElement(
+                'img'
+              );
+
+            img.src =
+              e.target.result;
+
+            preview.appendChild(
+              img
+            );
+
+          };
+
+        reader.readAsDataURL(
+          file
+        );
+
+      });
+
+    }
+
+    /* ================= SUBMIT ================= */
+
+    async function submitReport(){
+
+      const cfg =
+        CATEGORY_CONFIG[
+          activeCategory
+        ];
+
+      const data =
+        {};
+
+      for(
+        const f of cfg.fields
+      ){
+
+        /* MEMBER */
+
+        if(
+          f.type === 'members'
+        ){
+
+          const selected =
+            Array.from(
+              document.querySelectorAll(
+                '.member-checkbox:checked'
+              )
+            )
+            .map(
+              el =>
+                el.value
+            );
+
+          if(
+            f.required &&
+            selected.length === 0
+          ){
+
+            showToast(
+              'Pilih minimal satu anggota regu',
+              true
+            );
+
+            return;
+
+          }
+
+          data[f.key] =
+            selected;
+
+          continue;
+
+        }
+
+        /* LOCATION */
+
+        if(
+          f.type === 'location'
+        ){
+
+          const alamatEl =
+            document.getElementById(
+              'f-' + f.key
+            );
+
+          const val =
+            alamatEl.value.trim();
+
+          if(
+            f.required &&
+            !val
+          ){
+
+            alamatEl.focus();
+
+            alamatEl.style.borderColor =
+              'var(--damkar)';
+
+            showToast(
+              'Lengkapi field wajib: ' +
+              f.label,
+              true
+            );
+
+            return;
+
+          }
+
+          data[f.key] =
+            val;
+
+          let koordinat =
+            alamatEl.dataset.koordinat ||
+            '';
+
+          let mapsUrl =
+            alamatEl.dataset.maps ||
+            '';
+
+          /* Jaga-jaga: kalau admin belum sempat klik
+             tombol Ubah ke Alamat / Buka Google Maps,
+             tetap coba deteksi koordinat dari teks
+             yang ada supaya link Google Maps di laporan
+             selalu bisa dibuka. */
+
+          if(
+            !koordinat &&
+            val
+          ){
+
+            const coords =
+              extractLatLng(val);
+
+            if(coords){
+
+              koordinat =
+                coords.lat.toFixed(6) +
+                ',' +
+                coords.lng.toFixed(6);
+
+            }
+
+          }
+
+          if(!mapsUrl){
+
+            if(koordinat){
+
+              mapsUrl =
+                buildMapsUrlFromKoordinat(
+                  koordinat
+                );
+
+            } else if(val){
+
+              mapsUrl =
+                buildMapsUrlFromAlamat(
+                  val
+                );
+
+            }
+
+          }
+
+          if(koordinat){
+
+            data[f.key + 'Koordinat'] =
+              koordinat;
+
+          }
+
+          if(mapsUrl){
+
+            data[f.key + 'GoogleMaps'] =
+              mapsUrl;
+
+          }
+
+          continue;
+
+        }
+
+        /* IMAGE */
+
+        if(
+          f.type === 'images'
+        ){
+
+          const input =
+            document.getElementById(
+              'f-' + f.key
+            );
+
+          const files =
+            Array.from(
+              input.files
+            );
+
+          if(
+            files.length > 3
+          ){
+
+            showToast(
+              'Dokumentasi maksimal 3 gambar',
+              true
+            );
+
+            return;
+
+          }
+
+          data[f.key] =
+            [];
+
+          for(
+            const file of files
+          ){
+
+            const base64 =
+              await convertImageToBase64(
+                file
+              );
+
+            data[f.key].push(
+              base64
+            );
+
+          }
+
+          continue;
+
+        }
+
+        /* NORMAL */
+
+        const elm =
+          document.getElementById(
+            'f-' + f.key
+          );
+
+        const val =
+          elm.value.trim();
+
+        if(
+          f.required &&
+          !val
+        ){
+
+          elm.focus();
+
+          elm.style.borderColor =
+            'var(--damkar)';
+
+          showToast(
+            'Lengkapi field wajib: ' +
+            f.label,
+            true
+          );
+
+          return;
+
+        }
+
+        data[f.key] =
+          val;
+
+      }
+
+      if(
+        data.anggota
+      ){
+
+        data.jumlahPersonel =
+          data.anggota.length;
+
+      }
+
+      data.status =
+        'Belum Selesai';
+
+      const report = {
+
+        id:
+          'r_' +
+          Date.now() +
+          '_' +
+          Math.random()
+            .toString(36)
+            .slice(2,7),
+
+        kategori:
+          activeCategory,
+
+        data,
+
+        createdAt:
+          Date.now(),
+
+        createdBy:
+          adminName
+
+      };
+
+      reports.push(
+        report
+      );
+
+      await saveReports();
+
+      renderStats();
+
+      renderList();
+
+      closeModal();
+
+      showToast(
+        'Laporan berhasil disimpan'
+      );
+
+    }
+
+    /* ================= IMAGE TO BASE64 ================= */
+
+    function convertImageToBase64(file){
+
+      return new Promise(
+        (resolve,reject)=>{
+
+          const reader =
+            new FileReader();
+
+          reader.onload =
+            () =>
+              resolve(
+                reader.result
+              );
+
+          reader.onerror =
+            reject;
+
+          reader.readAsDataURL(
+            file
+          );
+
+        }
+      );
+
+    }
+
+    /* ================= WHATSAPP ================= */
+
+    function formatWhatsAppNumber(
+      number
+    ){
+
+      let n =
+        String(number)
+          .replace(/\D/g,'');
+
+      if(
+        n.startsWith('0')
+      ){
+
+        n =
+          '62' +
+          n.substring(1);
+
+      }
+
+      return n;
+
+    }
+
+    /* ================= UTIL ================= */
+
+    function escapeHtml(str){
+
+      const d =
+        document.createElement(
+          'div'
+        );
+
+      d.textContent =
+        str;
+
+      return d.innerHTML;
+
+    }
+
+    function formatDate(dateStr){
+
+      if(!dateStr){
+        return '—';
+      }
+
+      const d =
+        new Date(
+          dateStr +
+          'T00:00:00'
+        );
+
+      if(
+        isNaN(d)
+      ){
+        return dateStr;
+      }
+
+      return d.toLocaleDateString(
+        'id-ID',
+        {
+          day:'2-digit',
+          month:'short',
+          year:'numeric'
+        }
+      );
+
+    }
+
+    let toastTimer;
+
+    function showToast(
+      msg,
+      isError = false
+    ){
+
+      const t =
+        document.getElementById(
+          'toast'
+        );
+
+      document
+        .getElementById(
+          'toast-text'
+        )
+        .textContent =
+          msg;
+
+      t
+        .querySelector(
+          '.tdot'
+        )
+        .style
+        .background =
+          isError
+            ? 'var(--damkar)'
+            : 'var(--green)';
+
+      t.classList.add(
+        'show'
+      );
+
+      clearTimeout(
+        toastTimer
+      );
+
+      toastTimer =
+        setTimeout(
+          () =>
+            t.classList.remove(
+              'show'
+            ),
+          2600
+        );
+
+    }
+
+  </script>
+
+</body>
+</html>

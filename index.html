@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>SIKOMPAK — Satpol PP & Damkar</title>
+
+
+  <!-- ================= FONT ================= -->
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap"
+    rel="stylesheet"
+  >
+
+
+  <!-- ================= CSS ================= -->
+
+  <link
+    rel="stylesheet"
+    href="css/style.css"
+  >
+
+</head>
+
+
+<body>
+
+  <div
+    class="database-loading show"
+    id="database-loading"
+    role="status"
+    aria-live="polite"
+  >
+
+    <div class="database-loading-card">
+      <div class="database-loading-spinner" aria-hidden="true"></div>
+
+      <div class="database-loading-content">
+        <strong id="database-loading-title">Menyiapkan database</strong>
+        <span id="database-loading-text">Menghubungkan ke database laporan...</span>
+      </div>
+
+      <div class="database-loading-progress" aria-hidden="true">
+        <span></span>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
+       LOGIN
+  ====================================================== -->
+
+  <div id="login-screen" inert>
+
+
+    <!-- ================= LOGIN SIDE ================= -->
+
+    <div class="login-side">
+
+      <div class="eyebrow">
+        Sistem Rekap Terpadu
+      </div>
+
+
+      <h1>
+
+        SIKOMPAK<br>
+
+        <span class="b">
+          Satpol PP & Damkar
+        </span>
+
+      </h1>
+
+
+      <p class="desc">
+
+        Satu portal untuk mencatat dan merangkum
+        seluruh laporan lapangan dari dua sektor:
+        Ketertiban Umum (Satpol PP) dan
+        Pemadam Kebakaran (Damkar).
+
+      </p>
+
+
+      <div class="sector-tags">
+
+
+        <div class="sector-tag">
+
+          <span
+            class="dot"
+            style="background:#7FA3E0"
+          ></span>
+
+          Pengendalian & Penegakan
+
+        </div>
+
+
+        <div class="sector-tag">
+
+          <span
+            class="dot"
+            style="background:#F0937C"
+          ></span>
+
+          Pemadaman & Penyelamatan
+
+        </div>
+
+
+      </div>
+
+    </div>
+
+
+    <!-- ================= LOGIN FORM ================= -->
+
+    <div class="login-form-side">
+
+
+      <div class="login-card">
+
+
+        <h2>
+          Login
+        </h2>
+
+
+        <div class="sub">
+
+          Login untuk mengakses
+          dasbor laporan.
+
+        </div>
+
+
+        <div
+          class="login-error"
+          id="login-error"
+        >
+
+          Username atau password salah.
+          Coba lagi.
+
+        </div>
+
+
+        <!-- USERNAME -->
+
+        <div class="field">
+
+          <label>
+            Username
+          </label>
+
+
+          <input
+            type="text"
+            id="input-username"
+            placeholder="Masukan Username anda"
+            autocomplete="username"
+          >
+
+        </div>
+
+
+        <!-- PASSWORD -->
+
+        <div class="field">
+
+          <label>
+            Password
+          </label>
+
+
+          <div class="input-with-icon">
+
+
+            <input
+              type="password"
+              id="input-password"
+              placeholder="Tulis Password Anda"
+              autocomplete="current-password"
+            >
+
+
+            <button
+              type="button"
+              class="password-toggle"
+              id="password-toggle"
+              title="Lihat password"
+              aria-label="Lihat password"
+            >
+
+              <svg
+                id="eye-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+
+                <path
+                  d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"
+                />
+
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="3"
+                />
+
+              </svg>
+
+            </button>
+
+
+          </div>
+
+        </div>
+
+
+        <!-- LOGIN BUTTON -->
+
+        <button
+          class="btn btn-primary"
+          onclick="handleLogin()"
+        >
+
+          Login
+
+        </button>
+
+
+        <!-- LOGIN DEMO -->
+
+        <div class="login-hint">
+
+          Demo login —
+
+          username:
+          <b>admin</b>
+
+          ·
+
+          password:
+          <b>admin123</b>
+
+        </div>
+
+
+      </div>
+
+
+    </div>
+
+
+  </div>
+
+
+
+  <!-- =====================================================
+       APP
+  ====================================================== -->
+
+  <div id="app-screen" inert>
+
+
+    <!-- ===================================================
+         TOPBAR
+    ==================================================== -->
+
+    <header class="topbar">
+
+
+      <!-- ================= BRAND ================= -->
+
+      <div class="brand">
+
+
+        <svg
+          class="emblem"
+          viewBox="0 0 48 48"
+          fill="none"
+        >
+
+          <path
+            d="M24 3 L43 10 V22 C43 33 35 41 24 45 C13 41 5 33 5 22 V10 Z"
+            fill="#1C3252"
+            stroke="#7FA3E0"
+            stroke-width="1.5"
+          />
+
+
+          <path
+            d="M24 3 V45 C13 41 5 33 5 22 V10 Z"
+            fill="#2E5AAC"
+            opacity="0.55"
+          />
+
+
+          <path
+            d="M28 14c2 3-1 4-1 7 0 2 1.5 3 3 3 2 0 3.5-1.5 3.5-4 0-4-2.5-6-5.5-6z"
+            fill="#F0937C"
+          />
+
+        </svg>
+
+
+        <div class="brand-text">
+
+          <h1>
+            SIKOMPAK
+          </h1>
+
+
+          <div class="tag">
+            Satpol PP · Damkar
+          </div>
+
+        </div>
+
+
+      </div>
+
+
+      <!-- ================= TOPBAR RIGHT ================= -->
+
+      <div class="topbar-right">
+
+
+        <div class="admin-chip">
+
+
+          <div
+            class="admin-avatar"
+            id="avatar-initial"
+          >
+            A
+          </div>
+
+
+          <span id="admin-name-label">
+            Admin
+          </span>
+
+
+        </div>
+
+
+        <button
+          class="logout-btn"
+          onclick="handleLogout()"
+        >
+
+          Keluar
+
+        </button>
+
+
+      </div>
+
+
+    </header>
+
+
+
+    <!-- ===================================================
+         MAIN DASHBOARD
+    ==================================================== -->
+
+    <main>
+
+
+      <!--
+
+        Dashboard akan dibuat otomatis
+        oleh 05-dashboard.js berdasarkan role:
+
+        superadmin
+        admin
+        petugas
+
+      -->
+
+      <div
+        id="dashboard-container"
+      ></div>
+
+
+    </main>
+
+
+
+    <!-- ===================================================
+         FOOTER
+    ==================================================== -->
+
+    <footer class="foot">
+
+      SIKOMPAK v1.0
+
+    </footer>
+
+
+  </div>
+
+
+
+  <!-- =====================================================
+       MODAL TAMBAH LAPORAN
+  ====================================================== -->
+
+  <div
+    class="modal-overlay"
+    id="modal-overlay"
+  >
+
+
+    <div class="modal">
+
+
+      <!-- ================= MODAL HEADER ================= -->
+
+      <div class="modal-head">
+
+
+        <h2>
+          Tambah Laporan
+        </h2>
+
+
+        <button
+          class="modal-close"
+          onclick="closeModal()"
+        >
+
+          ✕
+
+        </button>
+
+
+      </div>
+
+
+      <!-- ================= CATEGORY ================= -->
+
+      <div
+        class="cat-tabs"
+        id="cat-tabs"
+      ></div>
+
+
+      <!-- ================= FORM ================= -->
+
+      <div class="modal-body">
+
+
+        <div
+          class="form-grid"
+          id="form-grid"
+        ></div>
+
+
+      </div>
+
+
+      <!-- ================= MODAL FOOTER ================= -->
+
+      <div class="modal-footer">
+
+
+        <button
+          class="btn btn-ghost"
+          onclick="closeModal()"
+        >
+
+          Batal
+
+        </button>
+
+
+        <button
+          class="btn btn-submit"
+          onclick="submitReport()"
+        >
+
+          Simpan Laporan
+
+        </button>
+
+
+      </div>
+
+
+    </div>
+
+
+  </div>
+
+
+
+  <!-- =====================================================
+       TOAST
+  ====================================================== -->
+
+  <div
+    class="upload-status"
+    id="upload-status"
+    role="status"
+    aria-live="polite"
+  >
+
+    <div class="upload-status-icon" id="upload-status-icon">↑</div>
+
+    <div class="upload-status-content">
+      <strong id="upload-status-title">Upload sedang berlangsung</strong>
+      <span id="upload-status-text">Laporan sudah tersimpan. Anda dapat melanjutkan pekerjaan lain.</span>
+    </div>
+
+    <button
+      type="button"
+      class="upload-status-close"
+      onclick="hideUploadStatus()"
+      title="Tutup notifikasi"
+      aria-label="Tutup notifikasi"
+    >
+      ✕
+    </button>
+
+  </div>
+
+  <div
+    class="toast"
+    id="toast"
+  >
+
+
+    <span class="tdot"></span>
+
+
+    <span id="toast-text">
+      Tersimpan
+    </span>
+
+
+  </div>
+
+
+
+  <!-- =====================================================
+       JAVASCRIPT
+  ====================================================== -->
+
+
+  <!-- 01 CONFIG -->
+
+  <script src="js/01-config.js"></script>
+
+
+  <!-- 02 DUMMY DATA -->
+
+  <script src="js/02-dummy-data.js"></script>
+
+
+  <!-- 03 STATE & STORAGE -->
+
+  <script src="js/03-state-storage.js"></script>
+
+
+  <!-- 04 AUTH -->
+
+  <script src="js/04-auth.js"></script>
+
+
+  <!-- 05 DASHBOARD -->
+
+  <script src="js/05-dashboard.js"></script>
+
+
+  <!-- DASHBOARD ROLE -->
+
+  <script src="js/05-superadmin-dashboard.js"></script>
+
+  <script src="js/05-admin-dashboard.js"></script>
+
+  <script src="js/05-petugas-dashboard.js"></script>
+
+
+  <!-- 06 MODAL FORM -->
+
+  <script src="js/06-modal-form.js"></script>
+
+
+  <!-- 07 LOCATION -->
+
+  <script src="js/07-location.js"></script>
+
+
+  <!-- 08 MEMBERS & IMAGES -->
+
+  <script src="js/08-members-images.js"></script>
+
+
+  <!-- 09 SUBMIT & WHATSAPP -->
+
+  <script src="js/09-submit-whatsapp.js"></script>
+
+
+  <!-- 10 UTILITIES -->
+
+  <script src="js/10-utils.js"></script>
+
+
+  <!-- 11 WORKFLOW LAPORAN -->
+
+  <script src="js/11-workflow.js"></script>
+
+
+</body>
+
+</html>
