@@ -315,6 +315,29 @@ async function logout() {
 
   const token = localStorage.getItem(SIKOMPAK_TOKEN_KEY) || '';
 
+  clearStoredSession();
+  currentUser = null;
+  showLoginScreen();
+
+  const usernameInput =
+    document.getElementById(
+      'input-username'
+    );
+
+  if (usernameInput) {
+    usernameInput.value = '';
+  }
+
+  const passwordInput =
+    document.getElementById(
+      'input-password'
+    );
+
+  if (passwordInput) {
+    passwordInput.value = '';
+    passwordInput.type = 'password';
+  }
+
   if (token && typeof fetchJsonFromGoogleSheet === 'function') {
     try {
       await fetchJsonFromGoogleSheet({
@@ -325,43 +348,6 @@ async function logout() {
     catch (error) {
       console.error('Logout server gagal:', error);
     }
-  }
-
-  clearStoredSession();
-
-  currentUser = null;
-
-
-  showLoginScreen();
-
-
-  /* Bersihkan username */
-  const usernameInput =
-    document.getElementById(
-      'input-username'
-    );
-
-
-  if (usernameInput) {
-
-    usernameInput.value = '';
-
-  }
-
-
-  /* Reset password */
-  const passwordInput =
-    document.getElementById(
-      'input-password'
-    );
-
-
-  if (passwordInput) {
-
-    passwordInput.value = '';
-
-    passwordInput.type = 'password';
-
   }
 
 }
@@ -761,6 +747,9 @@ function showDatabaseLoading(title, message) {
 
   if (!loading) return;
 
+  document.body.appendChild(loading);
+  loading.classList.remove('in-dashboard');
+
   if (loadingTitle) {
     loadingTitle.textContent = title || 'Menyiapkan database';
   }
@@ -940,7 +929,6 @@ document.addEventListener(
     ========================================= */
 
     initializeAuth();
-    initializeDatabaseOnStartup();
 
   }
 );

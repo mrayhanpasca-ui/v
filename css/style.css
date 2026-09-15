@@ -76,13 +76,18 @@
 
     .database-loading{
       position:fixed;
-      inset:0;
+      left:16px;
+      bottom:16px;
       z-index:9999;
       display:flex;
       align-items:center;
       justify-content:center;
-      padding:24px;
-      background:rgba(12, 25, 45, 0.72);
+      width:min(320px, calc(100vw - 32px));
+      padding:10px 12px;
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      background:var(--card);
+      box-shadow:0 6px 18px rgba(12,25,45,0.12);
       opacity:0;
       pointer-events:none;
       transition:opacity .2s ease;
@@ -93,24 +98,42 @@
       pointer-events:auto;
     }
 
+    .database-loading.in-dashboard{
+      position:relative;
+      inset:auto;
+      z-index:auto;
+      width:auto;
+      min-height:220px;
+      padding:24px;
+      border:0;
+      border-radius:0;
+      background:transparent;
+      box-shadow:none;
+      pointer-events:none;
+    }
+
+    .database-loading.in-dashboard.show{
+      pointer-events:none;
+    }
+
     .database-loading-card{
-      width:min(420px, 100%);
+      width:100%;
       display:grid;
       grid-template-columns:auto 1fr;
-      gap:12px;
+      gap:10px;
       align-items:center;
-      padding:20px;
-      border:1px solid rgba(255,255,255,0.18);
-      border-radius:12px;
-      background:#fff;
-      box-shadow:0 20px 60px rgba(0,0,0,0.28);
+      padding:0;
+      border:0;
+      border-radius:0;
+      background:transparent;
+      box-shadow:none;
       pointer-events:none;
     }
 
     .database-loading-spinner{
-      width:30px;
-      height:30px;
-      border:3px solid var(--satpol-soft);
+      width:22px;
+      height:22px;
+      border:2px solid var(--satpol-soft);
       border-top-color:var(--satpol);
       border-radius:50%;
       animation:database-spin .8s linear infinite;
@@ -125,18 +148,19 @@
 
     .database-loading-content strong{
       color:var(--ink);
-      font-size:14px;
+      font-size:12px;
+      line-height:1.25;
     }
 
     .database-loading-content span{
       color:var(--ink-soft);
-      font-size:12px;
+      font-size:11px;
       line-height:1.45;
     }
 
     .database-loading-progress{
       grid-column:1/-1;
-      height:4px;
+      height:3px;
       overflow:hidden;
       border-radius:999px;
       background:var(--satpol-soft);

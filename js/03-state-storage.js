@@ -2,7 +2,7 @@
    STATE & STORAGE
 ========================================================= */
 
-const GOOGLE_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyDHjwaFtKyp4Ap8xdbzuWqmppGQOnKO3RpXww-8Lb8vt-GB6zzqkRJ3W4bcSnYhHUB/exec';
+const GOOGLE_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxryKvCJwQT7Q7TL6zYkcUCf4YNFK1sAL9WpjRF4t8l6-yffL-VvtCXmadtIVFqNTpaug/exec';
 
 let users = [];
 let reports = [];
@@ -13,6 +13,8 @@ const SIKOMPAK_TOKEN_KEY = 'sikompaKToken';
 const SIKOMPAK_USER_KEY = 'sikompaKUser';
 const SIKOMPAK_EXPIRES_AT_KEY = 'sikompaKExpiresAt';
 const API_REQUEST_TIMEOUT_MS = 180000;
+const API_REQUEST_RETRY_COUNT = 2;
+const API_REQUEST_RETRY_DELAY_MS = 1500;
 
 
 function cloneData(data) {
@@ -121,7 +123,7 @@ async function fetchJsonFromGoogleSheet(payload = {}) {
 }
 
 
-function fetchJsonpFromGoogleSheet(url, params) {
+function fetchJsonpFromGoogleSheet(url, params, attempt = 0) {
 
   return new Promise((resolve, reject) => {
     const callbackName = `sikompaKJsonp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -155,6 +157,18 @@ function fetchJsonpFromGoogleSheet(url, params) {
 
     script.onerror = () => {
       cleanup();
+
+      if (attempt < API_REQUEST_RETRY_COUNT) {
+        setTimeout(() => {
+          fetchJsonpFromGoogleSheet(
+            url,
+            params,
+            attempt + 1
+          ).then(resolve, reject);
+        }, API_REQUEST_RETRY_DELAY_MS * (attempt + 1));
+        return;
+      }
+
       reject(new Error('Koneksi ke server gagal. Periksa URL dan deployment Apps Script.'));
     };
 
@@ -176,10 +190,8 @@ async function loadUsers() {
   if (response && response.data) {
     const fetchedUsers = Array.isArray(response.data.users) ? response.data.users : [];
 
-    if (fetchedUsers.length > 0) {
-      users = fetchedUsers.map(normalizeUserRole);
-      return users;
-    }
+    users = fetchedUsers.map(normalizeUserRole);
+    return users;
   }
 
   throw new Error('Data user tidak tersedia di database.');
@@ -206,10 +218,8 @@ async function loadReports() {
   if (response && response.data) {
     const fetchedReports = Array.isArray(response.data.reports) ? response.data.reports : [];
 
-    if (fetchedReports.length > 0) {
-      reports = fetchedReports;
-      return reports;
-    }
+    reports = fetchedReports;
+    return reports;
   }
 
   throw new Error('Data laporan tidak tersedia di database.');

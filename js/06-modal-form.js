@@ -305,6 +305,7 @@
                   type="file"
                   id="f-${f.key}"
                   accept="image/*"
+                  capture="environment"
                   multiple
                   onchange="previewImages(this)"
                 >

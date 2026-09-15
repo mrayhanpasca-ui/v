@@ -1032,6 +1032,7 @@ function saveUsersToSheet(users) {
 
   if (list.length === 0) {
 
+    invalidateDataCache();
     return 0;
 
   }
@@ -1113,6 +1114,7 @@ function saveUsersToSheet(users) {
     .setValues(values);
 
 
+  invalidateDataCache();
   return list.length;
 }
 
@@ -1153,6 +1155,7 @@ function saveReportsToSheet(reports) {
 
   if (list.length === 0) {
 
+    invalidateDataCache();
     return 0;
 
   }
@@ -1231,6 +1234,7 @@ function saveReportsToSheet(reports) {
     .setValues(values);
 
 
+  invalidateDataCache();
   return list.length;
 }
 
@@ -1640,6 +1644,8 @@ function syncAllData(payload) {
     reports
   );
 
+  invalidateDataCache();
+
 
   return {
 
@@ -1664,9 +1670,6 @@ function syncAllData(payload) {
 
 function getDataFromSheet() {
 
-  ensureRequiredSheets();
-
-
   return {
 
     users:
@@ -1676,6 +1679,44 @@ function getDataFromSheet() {
       getReportsFromSheet()
 
   };
+}
+
+
+function invalidateDataCache() {
+
+  CacheService
+    .getScriptCache()
+    .remove('sikompaK_data');
+
+}
+
+
+function getDataFromSheetCached() {
+
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('sikompaK_data');
+
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (error) {
+      cache.remove('sikompaK_data');
+    }
+  }
+
+  const data = getDataFromSheet();
+
+  try {
+    cache.put(
+      'sikompaK_data',
+      JSON.stringify(data),
+      60
+    );
+  } catch (error) {
+    Logger.log('Cache data tidak disimpan: ' + error.toString());
+  }
+
+  return data;
 }
 
 
@@ -2264,7 +2305,7 @@ function doGetJson(e) {
           JSON.stringify({
             ok: true,
             data:
-              getDataFromSheet()
+              getDataFromSheetCached()
           })
         )
         .setMimeType(
@@ -2337,7 +2378,7 @@ function doGetJson(e) {
         JSON.stringify({
           ok: true,
           data:
-            getDataFromSheet()
+            getDataFromSheetCached()
         })
       )
       .setMimeType(
@@ -2473,7 +2514,7 @@ function doPost(e) {
           JSON.stringify({
             ok: true,
             data:
-              getDataFromSheet()
+              getDataFromSheetCached()
           })
         )
         .setMimeType(
@@ -3090,6 +3131,7 @@ function uploadImagesToDrive(
 
   if (itemList.length === 0) {
 
+    invalidateDataCache();
     return {
 
       ok: true,
@@ -3327,6 +3369,8 @@ function uploadImagesToDrive(
       Logger.log('Penempelan link ke rawDataJson gagal: ' + error.toString());
     }
   }
+
+  invalidateDataCache();
 
 
   return {

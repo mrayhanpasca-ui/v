@@ -170,7 +170,7 @@ function renderWorkflowField(field, value, editMode, location = {}) {
   } else if (field.type === 'readonly') {
     input = `<input type="number" id="${id}" value="${Number(value || 0)}" readonly>`;
   } else if (field.type === 'images') {
-    input = `<input type="file" id="${id}" accept="image/*" multiple onchange="previewImages(this)"><div class="image-preview" id="${editMode ? 'edit-' : ''}image-preview"></div><small>Maksimal 3 gambar.</small>`;
+    input = `<input type="file" id="${id}" accept="image/*" capture="environment" multiple onchange="previewImages(this)"><div class="image-preview" id="${editMode ? 'edit-' : ''}image-preview"></div><small>Maksimal 3 gambar.</small>`;
   } else {
     input = `<input type="${field.type}" id="${id}" value="${escapeDashboardAttribute(value || '')}">`;
   }
@@ -618,7 +618,12 @@ function openPetugasTask(id, event) {
     <div class="field"><label>Waktu tiba</label><input type="datetime-local" id="task-arrival" value="${toDatetimeLocal(pelaksanaan.waktuTiba)}"></div>
     <div class="field"><label>Waktu selesai</label><input type="datetime-local" id="task-finished" value="${toDatetimeLocal(pelaksanaan.waktuSelesai)}"></div>
     <div class="field span2"><label>Hasil penanganan</label><textarea id="task-result">${escapeDashboardHtml(pelaksanaan.hasilPenanganan || '')}</textarea></div>
-    <div class="field span2"><label>Dokumentasi foto</label><input type="file" id="task-images" accept="image/*" multiple><small>Maksimal 3 foto.</small></div>
+    <div class="field span2">
+      <label>Dokumentasi foto</label>
+      <input type="file" id="task-images" accept="image/*" capture="environment" multiple>
+      <label class="btn btn-ghost" for="task-images">Ambil Foto</label>
+      <small>Maksimal 3 foto. Di HP, tombol ini membuka kamera atau galeri.</small>
+    </div>
   `;
   overlay.querySelector('.modal-footer').innerHTML = `
     <button class="btn btn-ghost" onclick="closeModal()">Batal</button>

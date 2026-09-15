@@ -83,15 +83,33 @@ async function showDashboard() {
   );
 
   try {
-    if (typeof loadUsers === 'function') {
-      await loadUsers();
-    }
+    const loadResults = await Promise.allSettled([
+      typeof loadUsers === 'function'
+        ? loadUsers()
+        : Promise.resolve([]),
+      typeof loadReports === 'function'
+        ? loadReports()
+        : Promise.resolve([])
+    ]);
 
-    if (typeof loadReports === 'function') {
-      await loadReports();
+    const reportsResult = loadResults[1];
+
+    if (reportsResult.status === 'rejected') {
+      throw reportsResult.reason;
     }
 
     renderDashboardShell();
+  }
+  catch (error) {
+    const reportListArea =
+      document.getElementById('report-list-area') || container;
+
+    reportListArea.innerHTML = `
+      <div class="empty-state dashboard-empty">
+        <div class="display">Database belum tersedia</div>
+        <div>${escapeDashboardHtml(error?.message || 'Data laporan gagal dimuat.')}</div>
+      </div>
+    `;
   }
   finally {
     hideDatabaseLoading();
