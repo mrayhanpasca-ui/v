@@ -30,6 +30,7 @@ const SHEET_NAMES = {
   DOKUMENTASI: 'Dokumentasi',
   LAPORAN_DETAIL: 'LaporanDetail',
   AUDIT_LOG: 'AuditLog',
+  MASTER_WILAYAH: 'MasterWilayah',
   SESSIONS: 'Sessions'
 };
 
@@ -68,6 +69,9 @@ const REPORT_HEADERS = [
   'jenisKegiatan',
   'petugasDitugaskan',
   'konfirmasiPenugasan',
+  'deleted',
+  'deletedAt',
+  'deletedBy',
   'rawDataJson'
 ];
 
@@ -87,6 +91,7 @@ const SESSION_HEADERS = [
 ];
 
 const SESSION_DURATION_MS = 2 * 60 * 60 * 1000;
+const DATA_CACHE_KEY = 'sikompaK_data_v2';
 
 
 // =========================================================
@@ -195,11 +200,20 @@ function ensureRequiredSheets() {
       'reportId',
       'inputAsli',
       'alamat',
+      'alamatAsli',
+      'kelurahan',
+      'kecamatan',
+      'kabupaten',
+      'provinsi',
+      'kodePos',
       'latitude',
       'longitude',
       'googleMapsUrl',
+      'mapsUrl',
       'sourceType',
       'reverseGeocodingStatus',
+      'sumberWilayah',
+      'terakhirDideteksi',
       'updatedAt'
     ]
   );
@@ -272,6 +286,20 @@ function ensureRequiredSheets() {
       'field',
       'before',
       'after'
+    ]
+  );
+
+  // MASTER WILAYAH KOTABARU
+  ensureHeaderRow(
+    SHEET_NAMES.MASTER_WILAYAH,
+    [
+      'id',
+      'kabupaten',
+      'kecamatan',
+      'desaKelurahan',
+      'jenis',
+      'kodePos',
+      'aktif'
     ]
   );
 }
@@ -376,6 +404,18 @@ function ensureHeaderRow(sheetName, headers) {
       .setValues([missing]);
 
   }
+}
+
+
+function getRequiredSheet(sheetName, headers) {
+
+  const sheet = getSheet(sheetName);
+
+  if (Array.isArray(headers) && headers.length > 0) {
+    ensureHeaderRow(sheetName, headers);
+  }
+
+  return sheet;
 }
 
 
@@ -997,125 +1037,973 @@ function getDefaultReports() {
 
 
 // =========================================================
+// HELPER CRUD GENERIK SHEET
+// =========================================================
+
+function getColumnIndexes(sheet) {
+
+  const lastColumn = sheet.getLastColumn();
+
+  if (lastColumn === 0) {
+    return {};
+  }
+
+  const headers = sheet
+    .getRange(1, 1, 1, lastColumn)
+    .getValues()[0];
+  const indexes = {};
+
+  headers.forEach(function (header, index) {
+    const name = String(header || '').trim();
+
+    if (name) {
+      indexes[name] = index;
+    }
+  });
+
+  return indexes;
+}
+
+
+function findRowById(sheet, id, idColumnName) {
+
+  const normalizedId = String(id || '').trim();
+  const columnName = idColumnName || 'id';
+
+  if (!normalizedId) {
+    return null;
+  }
+
+  const indexes = getColumnIndexes(sheet);
+  const idIndex = indexes[columnName];
+
+  if (typeof idIndex === 'undefined') {
+    return null;
+  }
+
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return null;
+  }
+
+  const values = sheet
+    .getRange(2, idIndex + 1, lastRow - 1, 1)
+    .getValues();
+
+  for (let index = 0; index < values.length; index++) {
+    if (String(values[index][0] || '').trim() === normalizedId) {
+      return {
+        rowNumber: index + 2,
+        indexes: indexes,
+        headers: Object.keys(indexes),
+        values: sheet
+          .getRange(index + 2, 1, 1, sheet.getLastColumn())
+          .getValues()[0]
+      };
+    }
+  }
+
+  return null;
+}
+
+
+function getObjectByIdFromSheet(sheet, id, idColumnName) {
+
+  const rowInfo = findRowById(sheet, id, idColumnName);
+
+  if (!rowInfo) {
+    return null;
+  }
+
+  const object = {};
+
+  Object.keys(rowInfo.indexes).forEach(function (key) {
+    object[key] = rowInfo.values[rowInfo.indexes[key]];
+  });
+
+  return {
+    rowNumber: rowInfo.rowNumber,
+    indexes: rowInfo.indexes,
+    headers: rowInfo.headers,
+    values: rowInfo.values,
+    object: object
+  };
+}
+
+
+function objectToSheetRow(sheet, object) {
+
+  const indexes = getColumnIndexes(sheet);
+  const row = new Array(sheet.getLastColumn()).fill('');
+
+  Object.keys(object || {}).forEach(function (key) {
+    if (typeof indexes[key] !== 'undefined') {
+      row[indexes[key]] = object[key];
+    }
+  });
+
+  return row;
+}
+
+
+function appendObjectToSheet(sheet, object) {
+
+  const row = objectToSheetRow(sheet, object);
+  const rowNumber = Math.max(sheet.getLastRow() + 1, 2);
+
+  sheet
+    .getRange(rowNumber, 1, 1, row.length)
+    .setValues([row]);
+
+  return rowNumber;
+}
+
+
+function updateObjectInSheet(sheet, id, object, idColumnName) {
+
+  const found = findRowById(sheet, id, idColumnName);
+
+  if (!found) {
+    return null;
+  }
+
+  const row = objectToSheetRow(sheet, object);
+
+  sheet
+    .getRange(found.rowNumber, 1, 1, row.length)
+    .setValues([row]);
+
+  return found.rowNumber;
+}
+
+
+function updateObjectFieldsById(sheet, id, patch, idColumnName) {
+
+  const found = getObjectByIdFromSheet(sheet, id, idColumnName);
+
+  if (!found) {
+    return null;
+  }
+
+  const row = found.values.slice();
+
+  Object.keys(patch || {}).forEach(function (key) {
+    if (typeof found.indexes[key] !== 'undefined') {
+      row[found.indexes[key]] = patch[key];
+    }
+  });
+
+  sheet
+    .getRange(found.rowNumber, 1, 1, row.length)
+    .setValues([row]);
+
+  return found.rowNumber;
+}
+
+
+function withWriteLock(callback) {
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    return callback();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+function deleteObjectFromSheet(sheet, id, idColumnName) {
+
+  const found = findRowById(sheet, id, idColumnName);
+
+  if (!found) {
+    return false;
+  }
+
+  sheet.deleteRow(found.rowNumber);
+  return true;
+}
+
+
+function normalizeUserForSheet(user) {
+
+  const value = user || {};
+
+  return {
+    id: value.id || '',
+    username: value.username || '',
+    password: value.password || '',
+    nama: value.nama || '',
+    jabatan: value.jabatan || '',
+    role: value.role || '',
+    unit: value.unit || '',
+    aktif: normalizeBoolean(value.aktif),
+    createdAt: value.createdAt || new Date().toISOString(),
+    rawDataJson: JSON.stringify(value)
+  };
+}
+
+
+function normalizeReportForSheet(report) {
+
+  const value = report || {};
+  const awal = value.laporanAwal || {};
+  const petugasDitugaskan = Array.isArray(awal.petugasDitugaskan)
+    ? awal.petugasDitugaskan
+    : [];
+  const jenisKegiatan = awal.jenisKegiatan ||
+    awal.jenisPelanggaran ||
+    awal.jenisKebakaran ||
+    awal.jenisKejadian ||
+    '';
+
+  return {
+    id: value.id || '',
+    status: value.status || '',
+    createdAt: value.createdAt || new Date().toISOString(),
+    updatedAt: value.updatedAt || new Date().toISOString(),
+    createdBy: value.createdBy || '',
+    kategori: value.kategori || awal.jenisLaporan || '',
+    nomorPelapor: awal.nomorPelapor || '',
+    deskripsiLokasi: awal.deskripsiLokasi || '',
+    jenisKegiatan: jenisKegiatan,
+    petugasDitugaskan: JSON.stringify(petugasDitugaskan),
+    konfirmasiPenugasan: awal.konfirmasiPenugasan || '',
+    deleted: report.deleted === true,
+    deletedAt: report.deletedAt || '',
+    deletedBy: report.deletedBy || '',
+    rawDataJson: JSON.stringify(value)
+  };
+}
+
+
+function normalizeLocationForSheet(reportId, location) {
+
+  const value = location || {};
+
+  return {
+    reportId: String(reportId || ''),
+    inputAsli: value.inputAsli || value.alamatAsli || value.alamat || '',
+    alamat: value.alamat || value.alamatAsli || value.inputAsli || '',
+    alamatAsli: value.alamatAsli || value.inputAsli || value.alamat || '',
+    kelurahan: value.kelurahan || '',
+    kecamatan: value.kecamatan || '',
+    kabupaten: value.kabupaten || '',
+    provinsi: value.provinsi || '',
+    kodePos: value.kodePos || '',
+    latitude: value.latitude ?? '',
+    longitude: value.longitude ?? '',
+    googleMapsUrl: value.googleMapsUrl || value.mapsUrl || '',
+    mapsUrl: value.mapsUrl || value.googleMapsUrl || '',
+    sourceType: value.sourceType || '',
+    reverseGeocodingStatus: value.reverseGeocodingStatus || '',
+    sumberWilayah: value.sumberWilayah || '',
+    terakhirDideteksi: value.terakhirDideteksi || '',
+    updatedAt: value.updatedAt || new Date().toISOString()
+  };
+
+}
+
+
+function upsertLocationForReport(reportId, location) {
+
+  const sheet = getRequiredSheet(SHEET_NAMES.LOKASI, [
+    'reportId', 'inputAsli', 'alamat', 'alamatAsli', 'kelurahan',
+    'kecamatan', 'kabupaten', 'provinsi', 'kodePos', 'latitude',
+    'longitude', 'googleMapsUrl', 'mapsUrl', 'sourceType',
+    'reverseGeocodingStatus', 'sumberWilayah', 'terakhirDideteksi', 'updatedAt'
+  ]);
+  const value = normalizeLocationForSheet(reportId, location);
+  const existing = findRowById(sheet, reportId, 'reportId');
+
+  if (existing) {
+    updateObjectInSheet(sheet, reportId, value, 'reportId');
+  } else {
+    appendObjectToSheet(sheet, value);
+  }
+
+  return value;
+
+}
+
+
+function getLocationForReport(reportId) {
+
+  const sheet = getRequiredSheet(SHEET_NAMES.LOKASI, [
+    'reportId', 'inputAsli', 'alamat', 'alamatAsli', 'kelurahan',
+    'kecamatan', 'kabupaten', 'provinsi', 'kodePos', 'latitude',
+    'longitude', 'googleMapsUrl', 'mapsUrl', 'sourceType',
+    'reverseGeocodingStatus', 'sumberWilayah', 'terakhirDideteksi', 'updatedAt'
+  ]);
+  const found = findRowById(sheet, reportId, 'reportId');
+
+  return found ? found.object : null;
+
+}
+
+
+function isDeletedFlag(value) {
+
+  return value === true ||
+    value === 1 ||
+    String(value || '').toLowerCase() === 'true' ||
+    String(value || '') === '1';
+}
+
+
+function getActorContext(context) {
+
+  const value = context || {};
+  const user = value.user || {};
+
+  return {
+    userId: String(value.userId || user.userId || user.id || '').trim(),
+    username: String(value.username || user.username || '').trim(),
+    role: String(value.role || user.role || '').trim()
+  };
+}
+
+
+function generateEntityId(prefix) {
+
+  return prefix + '-' + Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+}
+
+
+function sanitizeUserForClient(user) {
+
+  const value = user || {};
+
+  return {
+    id: value.id || '',
+    username: value.username || '',
+    nama: value.nama || '',
+    jabatan: value.jabatan || '',
+    role: value.role || '',
+    unit: value.unit || '',
+    aktif: normalizeBoolean(value.aktif),
+    createdAt: value.createdAt || ''
+  };
+}
+
+
+function parseUserSheetObject(object) {
+
+  const row = object || {};
+  const raw = safeJsonParse(row.rawDataJson) || {};
+
+  return {
+    id: row.id || raw.id || '',
+    username: row.username || raw.username || '',
+    password: row.password || raw.password || '',
+    nama: row.nama || raw.nama || '',
+    jabatan: row.jabatan || raw.jabatan || '',
+    role: row.role || raw.role || 'PETUGAS',
+    unit: row.unit || raw.unit || '',
+    aktif: normalizeBoolean(
+      row.aktif !== undefined ? row.aktif : raw.aktif
+    ),
+    createdAt: row.createdAt || raw.createdAt || ''
+  };
+}
+
+
+function parseReportSheetObject(object, documentation) {
+
+  const row = object || {};
+  const raw = safeJsonParse(row.rawDataJson) || {};
+  const reportId = row.id || raw.id || '';
+  const savedDocumentation = Array.isArray(documentation)
+    ? documentation
+    : [];
+  const existingDocumentation = raw.pelaksanaan &&
+    Array.isArray(raw.pelaksanaan.dokumentasi)
+    ? raw.pelaksanaan.dokumentasi
+    : [];
+  const initialDocumentation = raw.laporanAwal &&
+    Array.isArray(raw.laporanAwal.dokumentasi)
+    ? raw.laporanAwal.dokumentasi
+    : [];
+  const documentationList = initialDocumentation
+    .concat(existingDocumentation, savedDocumentation)
+    .filter(function (item, index, list) {
+      return item && list.indexOf(item) === index;
+    });
+  const storedLocation = getLocationForReport(reportId) || {};
+  const reportLocation = {
+    ...storedLocation,
+    ...(raw.laporanAwal && raw.laporanAwal.lokasi ? raw.laporanAwal.lokasi : {})
+  };
+  const laporanAwal = raw.laporanAwal || {
+    nomorPelapor: row.nomorPelapor || '',
+    deskripsiLokasi: row.deskripsiLokasi || '',
+    jenisKegiatan: row.jenisKegiatan || '',
+    petugasDitugaskan: safeJsonParse(row.petugasDitugaskan) || [],
+    konfirmasiPenugasan: row.konfirmasiPenugasan || ''
+  };
+  laporanAwal.lokasi = reportLocation;
+  const pelaksanaan = raw.pelaksanaan || {
+    petugasPelaksana: [],
+    waktuTiba: null,
+    waktuSelesai: null,
+    hasilPenanganan: '',
+    dokumentasi: []
+  };
+
+  pelaksanaan.dokumentasi = documentationList;
+
+  return {
+    id: reportId,
+    status: row.status || raw.status || '',
+    createdAt: row.createdAt || raw.createdAt || '',
+    updatedAt: row.updatedAt || raw.updatedAt || '',
+    createdBy: row.createdBy || raw.createdBy || '',
+    kategori: row.kategori || raw.kategori || '',
+    laporanAwal: {
+      ...laporanAwal,
+      dokumentasi: documentationList
+    },
+    pelaksanaan: pelaksanaan,
+    laporanDetail: raw.laporanDetail || {
+      kronologi: '',
+      penyebab: '',
+      korbanJiwa: 0,
+      korbanLuka: 0,
+      kerugian: 0,
+      keterangan: ''
+    },
+    auditLog: raw.auditLog || [],
+    deleted: isDeletedFlag(
+      row.deleted !== undefined ? row.deleted : raw.deleted
+    ),
+    deletedAt: row.deletedAt || raw.deletedAt || '',
+    deletedBy: row.deletedBy || raw.deletedBy || ''
+  };
+}
+
+
+function appendAuditLogEntry(reportId, action, field, before, after, context) {
+
+  const actor = getActorContext(context);
+  appendObjectToSheet(getRequiredSheet(SHEET_NAMES.AUDIT_LOG, [
+    'reportId',
+    'logId',
+    'waktu',
+    'userId',
+    'username',
+    'action',
+    'field',
+    'before',
+    'after'
+  ]), {
+    reportId: reportId,
+    logId: generateEntityId('LOG'),
+    waktu: new Date().toISOString(),
+    userId: actor.userId,
+    username: actor.username,
+    action: action,
+    field: field || '*',
+    before: JSON.stringify(before === undefined ? null : before),
+    after: JSON.stringify(after === undefined ? null : after)
+  });
+}
+
+
+function appendAuditChanges(reportId, before, after, context) {
+
+  const fields = [
+    'status',
+    'kategori',
+    'laporanAwal',
+    'pelaksanaan',
+    'laporanDetail',
+    'deleted'
+  ];
+  let changed = false;
+
+  fields.forEach(function (field) {
+    const beforeValue = before && before[field];
+    const afterValue = after && after[field];
+
+    if (JSON.stringify(beforeValue) === JSON.stringify(afterValue)) {
+      return;
+    }
+
+    changed = true;
+    appendAuditLogEntry(
+      reportId,
+      'UPDATE',
+      field,
+      beforeValue,
+      afterValue,
+      context
+    );
+  });
+
+  if (!changed) {
+    appendAuditLogEntry(reportId, 'UPDATE', '*', before, after, context);
+  }
+}
+
+
+function getDocumentationForReportId(reportId) {
+
+  const normalizedId = String(reportId || '').trim();
+
+  if (!normalizedId) {
+    return [];
+  }
+
+  const sheet = getRequiredSheet(SHEET_NAMES.DOKUMENTASI, [
+    'reportId',
+    'namaFile',
+    'url',
+    'uploadedAt'
+  ]);
+  const indexes = getColumnIndexes(sheet);
+  const reportIdIndex = indexes.reportId;
+  const urlIndex = indexes.url;
+
+  if (typeof reportIdIndex === 'undefined' || typeof urlIndex === 'undefined') {
+    return [];
+  }
+
+  const matches = sheet
+    .createTextFinder(normalizedId)
+    .matchEntireCell(true)
+    .findAll();
+  const urls = [];
+
+  matches.forEach(function (match) {
+    if (match.getColumn() !== reportIdIndex + 1) {
+      return;
+    }
+
+    const row = sheet
+      .getRange(match.getRow(), 1, 1, sheet.getLastColumn())
+      .getValues()[0];
+    const url = String(row[urlIndex] || '').trim();
+
+    if (url && urls.indexOf(url) === -1) {
+      urls.push(url);
+    }
+  });
+
+  return urls;
+}
+
+
+function createUser(user, context) {
+
+  return withWriteLock(function () {
+    const sheet = getRequiredSheet(SHEET_NAMES.USERS, USERS_HEADERS);
+    const input = user || {};
+    const value = normalizeUserForSheet({
+      ...input,
+      id: input.id || generateEntityId('USR'),
+      createdAt: new Date().toISOString()
+    });
+    const role = String(value.role || '').toUpperCase();
+
+    if (!['SUPERADMIN', 'ADMIN', 'PETUGAS'].includes(role)) {
+      throw new Error('Role user tidak valid.');
+    }
+
+    if (!value.username || !value.nama || !value.password) {
+      throw new Error('Username, nama, dan password user wajib diisi.');
+    }
+
+    const existingUsername = findUserByUsername(value.username);
+
+    if (existingUsername && String(existingUsername.id) !== String(value.id)) {
+      throw new Error('Username sudah digunakan.');
+    }
+
+    if (findRowById(sheet, value.id, 'id')) {
+      throw new Error('User dengan ID tersebut sudah ada.');
+    }
+
+    appendObjectToSheet(sheet, value);
+    appendAuditLogEntry('USER:' + value.id, 'CREATE', '*', null,
+      sanitizeUserForClient(value), context);
+    invalidateDataCache();
+    return sanitizeUserForClient(value);
+  });
+}
+
+
+function getUserById(id) {
+
+  const found = getObjectByIdFromSheet(
+    getRequiredSheet(SHEET_NAMES.USERS, USERS_HEADERS),
+    id,
+    'id'
+  );
+
+  return found ? sanitizeUserForClient(parseUserSheetObject(found.object)) : null;
+}
+
+
+function getUsers(options) {
+
+  const settings = options || {};
+  const list = getUsersFromSheet().map(sanitizeUserForClient);
+  const search = String(settings.search || '').toLowerCase();
+  const filtered = list.filter(function (user) {
+    return (!search || JSON.stringify(user).toLowerCase().indexOf(search) !== -1) &&
+      (!settings.role || user.role === settings.role) &&
+      (settings.aktif === undefined || user.aktif === normalizeBoolean(settings.aktif));
+  });
+  const offset = Math.max(Number(settings.offset) || 0, 0);
+  const limit = Number(settings.limit);
+
+  return limit > 0 ? filtered.slice(offset, offset + limit) : filtered.slice(offset);
+}
+
+
+function updateUser(id, patch, context) {
+
+  return withWriteLock(function () {
+    const sheet = getRequiredSheet(SHEET_NAMES.USERS, USERS_HEADERS);
+    const found = getObjectByIdFromSheet(sheet, id, 'id');
+
+    if (!found) {
+      return null;
+    }
+
+    const existing = parseUserSheetObject(found.object);
+    const nextRole = String((patch && patch.role) || existing.role).toUpperCase();
+
+    if (!['SUPERADMIN', 'ADMIN', 'PETUGAS'].includes(nextRole)) {
+      throw new Error('Role user tidak valid.');
+    }
+
+    const nextUsername = String(
+      (patch && patch.username) || existing.username
+    ).trim();
+    const duplicateUser = findUserByUsername(nextUsername);
+    const duplicate = duplicateUser &&
+      String(duplicateUser.id) !== String(existing.id);
+
+    if (duplicate) {
+      throw new Error('Username sudah digunakan.');
+    }
+
+    const value = normalizeUserForSheet({
+      ...existing,
+      ...(patch || {}),
+      id: existing.id,
+      role: nextRole,
+      createdAt: existing.createdAt
+    });
+    const before = sanitizeUserForClient(existing);
+    const after = sanitizeUserForClient(value);
+
+    updateObjectInSheet(sheet, id, value, 'id');
+    appendAuditLogEntry('USER:' + id, 'UPDATE', '*', before, after, context);
+    invalidateDataCache();
+    return after;
+  });
+}
+
+
+function deleteUser(id, context) {
+
+  const before = getUserById(id);
+  const result = updateUser(id, { aktif: false }, context);
+
+  if (!result) {
+    return false;
+  }
+
+  appendAuditLogEntry(
+    'USER:' + id,
+    'DELETE',
+    'aktif',
+    before ? before.aktif : true,
+    false,
+    context
+  );
+
+  return true;
+}
+
+
+function createReport(report, context) {
+
+  return withWriteLock(function () {
+    const sheet = getRequiredSheet(SHEET_NAMES.LAPORAN, REPORT_HEADERS);
+    const input = report || {};
+    const actor = getActorContext(context);
+    const reportId = input.id || generateEntityId('RPT');
+    const value = normalizeReportForSheet({
+      ...input,
+      id: reportId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: actor.userId,
+      deleted: false,
+      deletedAt: '',
+      deletedBy: ''
+    });
+    if (!value.kategori || !value.deskripsiLokasi) {
+      throw new Error('Kategori dan deskripsi lokasi wajib diisi.');
+    }
+
+    if (findRowById(sheet, reportId, 'id')) {
+      throw new Error('Laporan dengan ID tersebut sudah ada.');
+    }
+
+    appendObjectToSheet(sheet, value);
+    upsertLocationForReport(reportId, input.laporanAwal && input.laporanAwal.lokasi);
+    appendAuditLogEntry(reportId, 'CREATE', '*', null, value, context);
+    invalidateDataCache();
+    return getReportById(reportId, { includeDeleted: true });
+  });
+}
+
+
+function getReportById(id, options) {
+
+  const found = getObjectByIdFromSheet(
+    getRequiredSheet(SHEET_NAMES.LAPORAN, REPORT_HEADERS),
+    id,
+    'id'
+  );
+
+  if (!found) {
+    return null;
+  }
+
+  const report = parseReportSheetObject(
+    found.object,
+    getDocumentationForReportId(id)
+  );
+
+  if (report.deleted && !(options && options.includeDeleted)) {
+    return null;
+  }
+
+  return report;
+}
+
+
+function canAccessReport(report, context) {
+
+  const actor = getActorContext(context);
+
+  if (!actor.role || actor.role === 'ADMIN' || actor.role === 'SUPERADMIN') {
+    return true;
+  }
+
+  if (actor.role !== 'PETUGAS') {
+    return false;
+  }
+
+  const awal = report && report.laporanAwal || {};
+  const assigned = Array.isArray(awal.petugasDitugaskan)
+    ? awal.petugasDitugaskan.map(String)
+    : [];
+
+  return assigned.indexOf(actor.userId) !== -1 ||
+    assigned.indexOf(actor.username) !== -1;
+}
+
+
+function parseReportListRow(row) {
+
+  const raw = safeJsonParse(row.rawDataJson) || {};
+  const petugasDitugaskan = safeJsonParse(row.petugasDitugaskan);
+  const assigned = Array.isArray(petugasDitugaskan)
+    ? petugasDitugaskan
+    : raw.laporanAwal && Array.isArray(raw.laporanAwal.petugasDitugaskan)
+      ? raw.laporanAwal.petugasDitugaskan
+      : [];
+
+  return {
+    id: row.id || raw.id || '',
+    status: row.status || raw.status || '',
+    createdAt: row.createdAt || raw.createdAt || '',
+    updatedAt: row.updatedAt || raw.updatedAt || '',
+    createdBy: row.createdBy || raw.createdBy || '',
+    kategori: row.kategori || raw.kategori || '',
+    laporanAwal: {
+      nomorPelapor: row.nomorPelapor || raw.laporanAwal?.nomorPelapor || '',
+      deskripsiLokasi: row.deskripsiLokasi || raw.laporanAwal?.deskripsiLokasi || '',
+      jenisKegiatan: row.jenisKegiatan || raw.laporanAwal?.jenisKegiatan || '',
+      lokasi: raw.laporanAwal?.lokasi || {},
+      petugasDitugaskan: assigned,
+      konfirmasiPenugasan: row.konfirmasiPenugasan || raw.laporanAwal?.konfirmasiPenugasan || ''
+    },
+    pelaksanaan: {
+      petugasPelaksana: raw.pelaksanaan?.petugasPelaksana || [],
+      waktuTiba: raw.pelaksanaan?.waktuTiba || null,
+      waktuSelesai: raw.pelaksanaan?.waktuSelesai || null,
+      hasilPenanganan: raw.pelaksanaan?.hasilPenanganan || ''
+    },
+    deleted: isDeletedFlag(row.deleted !== undefined ? row.deleted : raw.deleted)
+  };
+}
+
+
+function getReports(options, context) {
+
+  const settings = options || {};
+  const search = String(settings.search || '').toLowerCase();
+  const status = String(settings.status || '').trim();
+  const kategori = String(settings.kategori || '').trim();
+  const createdBy = String(settings.createdBy || '').trim();
+  const assignedTo = String(settings.petugasId || settings.petugasDitugaskan || '').trim();
+  const rows = readSheetRows(SHEET_NAMES.LAPORAN);
+  const summaries = rows.map(parseReportListRow);
+  const reports = summaries.filter(function (report) {
+    const assigned = report.laporanAwal && report.laporanAwal.petugasDitugaskan;
+    const assignedList = Array.isArray(assigned) ? assigned.map(String) : [];
+
+    return !report.deleted &&
+      canAccessReport(report, context) &&
+      (!status || report.status === status) &&
+      (!kategori || report.kategori === kategori) &&
+      (!createdBy || report.createdBy === createdBy) &&
+      (!assignedTo || assignedList.indexOf(assignedTo) !== -1) &&
+      (!search || JSON.stringify(report).toLowerCase().indexOf(search) !== -1);
+  });
+  const sortBy = ['createdAt', 'updatedAt', 'status', 'kategori'].includes(settings.sortBy)
+    ? settings.sortBy
+    : '';
+  const direction = String(settings.sortDirection || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+
+  if (sortBy) {
+    reports.sort(function (left, right) {
+      return String(left[sortBy] || '').localeCompare(
+        String(right[sortBy] || '')
+      ) * direction;
+    });
+  }
+  const pageSize = Number(settings.pageSize || settings.limit);
+  const page = Math.max(Number(settings.page) || 1, 1);
+  const offset = settings.pageSize
+    ? (page - 1) * pageSize
+    : Math.max(Number(settings.offset) || 0, 0);
+  const limit = pageSize;
+  const paged = limit > 0
+    ? reports.slice(offset, offset + limit)
+    : reports.slice(offset);
+
+  if (settings.includeDetails === true) {
+    return paged.map(function (summary) {
+      return getReportById(summary.id, { includeDeleted: false }) || summary;
+    });
+  }
+
+  return paged;
+}
+
+
+function updateReport(id, patch, context) {
+
+  return withWriteLock(function () {
+    const sheet = getRequiredSheet(SHEET_NAMES.LAPORAN, REPORT_HEADERS);
+    const found = getObjectByIdFromSheet(sheet, id, 'id');
+
+    if (!found) {
+      return null;
+    }
+
+    const existing = parseReportSheetObject(
+      found.object,
+      getDocumentationForReportId(id)
+    );
+    const before = existing;
+    const nextReport = {
+      ...existing,
+      ...(patch || {}),
+      id: existing.id,
+      createdAt: existing.createdAt,
+      createdBy: existing.createdBy,
+      updatedAt: new Date().toISOString()
+    };
+    const value = normalizeReportForSheet(nextReport);
+
+    updateObjectInSheet(sheet, id, value, 'id');
+    upsertLocationForReport(id, nextReport.laporanAwal && nextReport.laporanAwal.lokasi);
+    appendAuditChanges(id, before, nextReport, context);
+    invalidateDataCache();
+    return getReportById(id, { includeDeleted: true });
+  });
+}
+
+
+function deleteReport(id, context) {
+
+  return withWriteLock(function () {
+    const sheet = getRequiredSheet(SHEET_NAMES.LAPORAN, REPORT_HEADERS);
+    const found = getObjectByIdFromSheet(sheet, id, 'id');
+    const existing = getReportById(id, { includeDeleted: true });
+
+    if (!found || !existing) {
+      return false;
+    }
+
+    const actor = getActorContext(context);
+    const deletedAt = new Date().toISOString();
+    const value = normalizeReportForSheet({
+      ...existing,
+      deleted: true,
+      deletedAt: deletedAt,
+      deletedBy: actor.userId,
+      updatedAt: deletedAt
+    });
+
+    updateObjectInSheet(sheet, id, value, 'id');
+    invalidateDataCache();
+
+    appendAuditLogEntry(id, 'DELETE', 'deleted', false, true, context);
+    return true;
+  });
+}
+
+
+
+// =========================================================
 // SIMPAN USERS
 // =========================================================
 
+/**
+ * @deprecated Compatibility migration wrapper. Use User CRUD actions.
+ */
 function saveUsersToSheet(users) {
 
   ensureRequiredSheets();
 
-  const sheet =
-    getSheet(SHEET_NAMES.USERS);
+  const incomingUsers = Array.isArray(users) ? users : [];
+  const userSheet = getSheet(SHEET_NAMES.USERS);
 
-  const list =
-    Array.isArray(users)
-      ? users
-      : [];
-
-
-  // Bersihkan isi lama
-  sheet.clearContents();
-
-
-  // Tulis header
-  sheet
-    .getRange(
-      1,
-      1,
-      1,
-      USERS_HEADERS.length
-    )
-    .setValues([
-      USERS_HEADERS
-    ]);
-
-
-  if (list.length === 0) {
-
-    invalidateDataCache();
-    return 0;
-
-  }
-
-
-  const values =
-    list.map(function (user) {
-
-      const clean = {
-
-        id:
-          user.id || '',
-
-        username:
-          user.username || '',
-
-        password:
-          user.password || '',
-
-        nama:
-          user.nama || '',
-
-        jabatan:
-          user.jabatan || '',
-
-        role:
-          user.role || '',
-
-        unit:
-          user.unit || '',
-
-        aktif:
-          normalizeBoolean(user.aktif),
-
-        createdAt:
-          user.createdAt ||
-          new Date().toISOString(),
-
-        rawDataJson:
-          JSON.stringify(user)
-
-      };
-
-
-      return [
-
-        clean.id,
-
-        clean.username,
-
-        clean.password,
-
-        clean.nama,
-
-        clean.jabatan,
-
-        clean.role,
-
-        clean.unit,
-
-        clean.aktif,
-
-        clean.createdAt,
-
-        clean.rawDataJson
-
-      ];
-
+  incomingUsers.forEach(function (user) {
+    const existing = user && user.id
+      ? getObjectByIdFromSheet(userSheet, user.id, 'id')
+      : null;
+    const value = normalizeUserForSheet({
+      ...(existing ? parseUserSheetObject(existing.object) : {}),
+      ...(user || {})
     });
 
+    if (!String(value.id).trim()) {
+      return;
+    }
 
-  sheet
-    .getRange(
-      2,
-      1,
-      values.length,
-      USERS_HEADERS.length
-    )
-    .setValues(values);
-
+    if (findRowById(userSheet, value.id, 'id')) {
+      updateObjectInSheet(userSheet, value.id, value, 'id');
+    } else {
+      appendObjectToSheet(userSheet, value);
+    }
+  });
 
   invalidateDataCache();
-  return list.length;
+  return incomingUsers.length;
 }
 
 
@@ -1123,119 +2011,37 @@ function saveUsersToSheet(users) {
 // SIMPAN REPORTS
 // =========================================================
 
+/**
+ * @deprecated Compatibility migration wrapper. Use Report CRUD actions.
+ */
 function saveReportsToSheet(reports) {
 
   ensureRequiredSheets();
 
-  const sheet =
-    getSheet(SHEET_NAMES.LAPORAN);
+  const incomingReports = Array.isArray(reports) ? reports : [];
+  const reportSheet = getSheet(SHEET_NAMES.LAPORAN);
 
-  const list =
-    Array.isArray(reports)
-      ? reports
-      : [];
+  incomingReports.forEach(function (report) {
+    const value = normalizeReportForSheet(report);
 
+    if (!String(value.id).trim()) {
+      return;
+    }
 
-  // Bersihkan isi lama
-  sheet.clearContents();
+    if (findRowById(reportSheet, value.id, 'id')) {
+      updateObjectInSheet(reportSheet, value.id, value, 'id');
+    } else {
+      appendObjectToSheet(reportSheet, value);
+    }
 
-
-  // Tulis header
-  sheet
-    .getRange(
-      1,
-      1,
-      1,
-      REPORT_HEADERS.length
-    )
-    .setValues([
-      REPORT_HEADERS
-    ]);
-
-
-  if (list.length === 0) {
-
-    invalidateDataCache();
-    return 0;
-
-  }
-
-
-  const values =
-    list.map(function (report) {
-
-      const awal =
-        report &&
-        report.laporanAwal
-          ? report.laporanAwal
-          : {};
-
-
-      const petugasDitugaskan =
-        Array.isArray(
-          awal.petugasDitugaskan
-        )
-          ? awal.petugasDitugaskan
-          : [];
-
-
-      const jenisKegiatan =
-        awal.jenisKegiatan ||
-        awal.jenisPelanggaran ||
-        awal.jenisKebakaran ||
-        awal.jenisKejadian ||
-        '';
-
-
-      return [
-
-        report.id || '',
-
-        report.status || '',
-
-        report.createdAt ||
-          new Date().toISOString(),
-
-        report.updatedAt ||
-          new Date().toISOString(),
-
-        report.createdBy || '',
-
-        report.kategori ||
-          awal.jenisLaporan ||
-          '',
-
-        awal.nomorPelapor || '',
-
-        awal.deskripsiLokasi || '',
-
-        jenisKegiatan,
-
-        JSON.stringify(
-          petugasDitugaskan
-        ),
-
-        awal.konfirmasiPenugasan || '',
-
-        JSON.stringify(report)
-
-      ];
-
-    });
-
-
-  sheet
-    .getRange(
-      2,
-      1,
-      values.length,
-      REPORT_HEADERS.length
-    )
-    .setValues(values);
-
+    upsertLocationForReport(
+      value.id,
+      report && report.laporanAwal && report.laporanAwal.lokasi
+    );
+  });
 
   invalidateDataCache();
-  return list.length;
+  return incomingReports.length;
 }
 
 
@@ -1321,11 +2127,87 @@ function getUsersFromSheet() {
 }
 
 
+function getMasterWilayah() {
+
+  return readSheetRows(SHEET_NAMES.MASTER_WILAYAH)
+    .filter(function (row) {
+      return normalizeBoolean(row.aktif);
+    })
+    .map(function (row) {
+      return {
+        id: String(row.id || '').trim(),
+        kabupaten: String(row.kabupaten || '').trim(),
+        kecamatan: String(row.kecamatan || '').trim(),
+        desaKelurahan: String(row.desaKelurahan || '').trim(),
+        jenis: String(row.jenis || '').trim(),
+        kodePos: String(row.kodePos || '').trim(),
+        aktif: true
+      };
+    })
+    .filter(function (row) {
+      return row.kecamatan || row.desaKelurahan;
+    });
+}
+
+
+function initializeMasterWilayah() {
+
+  return withWriteLock(function () {
+    const sheet = getRequiredSheet(SHEET_NAMES.MASTER_WILAYAH, [
+      'id', 'kabupaten', 'kecamatan', 'desaKelurahan', 'jenis', 'kodePos', 'aktif'
+    ]);
+    const districtResponse = UrlFetchApp.fetch(
+      'https://wilayah.id/api/districts/63.02.json',
+      { muteHttpExceptions: true }
+    );
+    const districtPayload = JSON.parse(districtResponse.getContentText() || '{}');
+    const districts = Array.isArray(districtPayload.data) ? districtPayload.data : [];
+    let count = 0;
+
+    districts.forEach(function (district) {
+      const villageResponse = UrlFetchApp.fetch(
+        'https://wilayah.id/api/villages/' + encodeURIComponent(district.code) + '.json',
+        { muteHttpExceptions: true }
+      );
+      const villagePayload = JSON.parse(villageResponse.getContentText() || '{}');
+      const villages = Array.isArray(villagePayload.data) ? villagePayload.data : [];
+
+      villages.forEach(function (village) {
+        const value = {
+          id: village.code,
+          kabupaten: 'Kabupaten Kotabaru',
+          kecamatan: district.name,
+          desaKelurahan: village.name,
+          jenis: Number(String(village.code).split('.').pop()) < 2000
+            ? 'Kelurahan'
+            : 'Desa',
+          kodePos: '',
+          aktif: true
+        };
+        if (findRowById(sheet, value.id, 'id')) {
+          updateObjectInSheet(sheet, value.id, value, 'id');
+        } else {
+          appendObjectToSheet(sheet, value);
+        }
+        count++;
+      });
+    });
+
+    invalidateDataCache();
+    return { ok: true, kecamatan: districts.length, desaKelurahan: count };
+  });
+}
+
+
 // =========================================================
 // MEMBACA REPORTS
 // =========================================================
 
 function getDocumentationByReportId() {
+
+  if (arguments.length > 0) {
+    return getDocumentationForReportId(arguments[0]);
+  }
 
   const rows =
     readSheetRows(
@@ -1527,6 +2409,25 @@ function getReportsFromSheet() {
       auditLog:
         raw.auditLog || []
 
+      ,
+
+      deleted:
+        isDeletedFlag(
+          row.deleted !== undefined
+            ? row.deleted
+            : raw.deleted
+        ),
+
+      deletedAt:
+        row.deletedAt ||
+        raw.deletedAt ||
+        '',
+
+      deletedBy:
+        row.deletedBy ||
+        raw.deletedBy ||
+        ''
+
     };
 
   });
@@ -1611,6 +2512,9 @@ function ensureDefaultReportsInSheet() {
 // SINKRONISASI DATA
 // =========================================================
 
+/**
+ * @deprecated Compatibility migration wrapper. It performs per-ID upserts.
+ */
 function syncAllData(payload) {
 
   const data =
@@ -1673,20 +2577,41 @@ function getDataFromSheet() {
   return {
 
     users:
-      getUsersFromSheet(),
+      getUsersFromSheet().map(
+        sanitizeUserForClient
+      ),
 
     reports:
-      getReportsFromSheet()
+      getReports(),
+
+    masterWilayah:
+      getMasterWilayah()
 
   };
 }
 
 
+function getDataForContext(context) {
+
+  const actor = getActorContext(context);
+
+  if (actor.role === 'PETUGAS') {
+    return {
+      users: getUsers(),
+      reports: getReports({}, context),
+      masterWilayah: getMasterWilayah()
+    };
+  }
+
+  return getDataFromSheetCached();
+}
+
+
 function invalidateDataCache() {
 
-  CacheService
-    .getScriptCache()
-    .remove('sikompaK_data');
+  const cache = CacheService.getScriptCache();
+  cache.remove(DATA_CACHE_KEY);
+  cache.remove('sikompaK_data');
 
 }
 
@@ -1694,13 +2619,13 @@ function invalidateDataCache() {
 function getDataFromSheetCached() {
 
   const cache = CacheService.getScriptCache();
-  const cached = cache.get('sikompaK_data');
+  const cached = cache.get(DATA_CACHE_KEY);
 
   if (cached) {
     try {
       return JSON.parse(cached);
     } catch (error) {
-      cache.remove('sikompaK_data');
+      cache.remove(DATA_CACHE_KEY);
     }
   }
 
@@ -1708,7 +2633,7 @@ function getDataFromSheetCached() {
 
   try {
     cache.put(
-      'sikompaK_data',
+      DATA_CACHE_KEY,
       JSON.stringify(data),
       60
     );
@@ -1776,40 +2701,31 @@ function getSessionByToken(token) {
 
   }
 
-  const sheet = getSheet(SHEET_NAMES.SESSIONS);
-  const values = sheet.getDataRange().getValues();
-
-  if (values.length <= 1) {
-
-    return null;
-
-  }
-
+  const sheet = getRequiredSheet(SHEET_NAMES.SESSIONS, SESSION_HEADERS);
   const indexes = getSessionColumnIndexes();
+  const tokenColumn = indexes.token + 1;
+  const matches = sheet
+    .getRange(2, tokenColumn, Math.max(sheet.getLastRow() - 1, 1), 1)
+    .createTextFinder(normalizedToken)
+    .matchEntireCell(true)
+    .findAll();
 
-  for (let rowIndex = 1; rowIndex < values.length; rowIndex++) {
-
-    const row = values[rowIndex];
-
-    if (String(row[indexes.token] || '').trim() === normalizedToken) {
-
-      return {
-        rowNumber: rowIndex + 1,
-        row: row,
-        indexes: indexes
-      };
-
-    }
-
+  if (matches.length === 0) {
+    return null;
   }
 
-  return null;
+  const rowNumber = matches[0].getRow();
+  return {
+    rowNumber: rowNumber,
+    row: sheet
+      .getRange(rowNumber, 1, 1, sheet.getLastColumn())
+      .getValues()[0],
+    indexes: indexes
+  };
 }
 
 
 function validateToken(token) {
-
-  ensureRequiredSheets();
 
   const session = getSessionByToken(token);
 
@@ -1916,10 +2832,49 @@ function getPayloadToken(payload) {
 }
 
 
-function loginUser(payload) {
+function findUserByUsername(username) {
 
-  ensureRequiredSheets();
-  cleanupExpiredSessions();
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+
+  if (!normalizedUsername) {
+    return null;
+  }
+
+  const sheet = getRequiredSheet(SHEET_NAMES.USERS, USERS_HEADERS);
+  const indexes = getColumnIndexes(sheet);
+  const usernameIndex = indexes.username;
+
+  if (typeof usernameIndex === 'undefined' || sheet.getLastRow() <= 1) {
+    return null;
+  }
+
+  const matches = sheet
+    .getRange(2, usernameIndex + 1, sheet.getLastRow() - 1, 1)
+    .getValues();
+
+  for (let index = 0; index < matches.length; index++) {
+    if (String(matches[index][0] || '').trim().toLowerCase() !== normalizedUsername) {
+      continue;
+    }
+
+    const rowNumber = index + 2;
+    const values = sheet
+      .getRange(rowNumber, 1, 1, sheet.getLastColumn())
+      .getValues()[0];
+    const object = {};
+
+    Object.keys(indexes).forEach(function (key) {
+      object[key] = values[indexes[key]];
+    });
+
+    return parseUserSheetObject(object);
+  }
+
+  return null;
+}
+
+
+function loginUser(payload) {
 
   const data = getPayloadDataObject(payload);
   const username = String(
@@ -1929,15 +2884,9 @@ function loginUser(payload) {
     payload.password || data.password || ''
   );
 
-  const user = getUsersFromSheet().find(function (candidate) {
+  const user = findUserByUsername(username);
 
-    return candidate.username === username &&
-      String(candidate.password) === password &&
-      normalizeBoolean(candidate.aktif);
-
-  });
-
-  if (!user) {
+  if (!user || String(user.password) !== password || !normalizeBoolean(user.aktif)) {
 
     return {
       ok: false,
@@ -1951,47 +2900,32 @@ function loginUser(payload) {
   const expiresAt = new Date(
     createdAt.getTime() + SESSION_DURATION_MS
   );
-  let token = '';
+  const token = Utilities.getUuid() + '-' + Utilities.getUuid();
 
-  do {
+  withWriteLock(function () {
+    const sheet = getRequiredSheet(SHEET_NAMES.SESSIONS, SESSION_HEADERS);
 
-    token = Utilities.getUuid() + '-' + Utilities.getUuid();
-
-  } while (getSessionByToken(token));
-
-  const sheet = getSheet(SHEET_NAMES.SESSIONS);
-
-  sheet.appendRow([
-    token,
-    user.id,
-    user.username,
-    user.role,
-    createdAt.toISOString(),
-    expiresAt.toISOString(),
-    true
-  ]);
+    sheet.appendRow([
+      token,
+      user.id,
+      user.username,
+      user.role,
+      createdAt.toISOString(),
+      expiresAt.toISOString(),
+      true
+    ]);
+  });
 
   return {
     ok: true,
     token: token,
     expiresAt: expiresAt.toISOString(),
-    user: {
-      id: user.id,
-      username: user.username,
-      nama: user.nama,
-      role: user.role
-    },
-    data: {
-      users: getUsersFromSheet(),
-      reports: getReportsFromSheet()
-    }
+    user: sanitizeUserForClient(user)
   };
 }
 
 
 function logoutUser(token) {
-
-  ensureRequiredSheets();
 
   const session = getSessionByToken(token);
 
@@ -2001,7 +2935,7 @@ function logoutUser(token) {
 
   }
 
-  getSheet(SHEET_NAMES.SESSIONS)
+  getRequiredSheet(SHEET_NAMES.SESSIONS, SESSION_HEADERS)
     .getRange(
       session.rowNumber,
       session.indexes.aktif + 1
@@ -2035,6 +2969,155 @@ function authorizeRequest(payload, allowedRoles) {
   }
 
   return tokenResult;
+}
+
+
+function getCrudData(payload) {
+
+  return payload && payload.data && typeof payload.data === 'object'
+    ? payload.data
+    : {};
+}
+
+
+function getCrudId(payload) {
+
+  const data = getCrudData(payload);
+  return String(
+    payload && (payload.id || payload.reportId || payload.userId) ||
+    data.id || data.reportId || data.userId ||
+    ''
+  ).trim();
+}
+
+
+function handleCrudAction(payload, authorization) {
+
+  const action = payload && payload.action;
+  const data = getCrudData(payload);
+  const id = getCrudId(payload);
+  const context = authorization || {};
+  let result;
+
+  switch (action) {
+    case 'initializeMasterWilayah':
+      result = initializeMasterWilayah();
+      return { ok: true, success: true, data: result, result: result };
+    case 'createUser':
+      result = createUser(data, context);
+      return { ok: true, success: true, data: result, user: result };
+    case 'getUser':
+      result = getUserById(id);
+      return result
+        ? { ok: true, success: true, data: result, user: result }
+        : { ok: false, error: 'USER_NOT_FOUND', message: 'User tidak ditemukan.' };
+    case 'getUsers':
+      result = getUsers(data);
+      return { ok: true, success: true, data: result, users: result };
+    case 'getMasterWilayah':
+      result = getMasterWilayah();
+      return { ok: true, success: true, data: result, masterWilayah: result };
+    case 'updateUser':
+      result = updateUser(id, data, context);
+      return result
+        ? { ok: true, success: true, data: result, user: result }
+        : { ok: false, error: 'USER_NOT_FOUND', message: 'User tidak ditemukan.' };
+    case 'deleteUser':
+      result = deleteUser(id, context);
+      return result
+        ? { ok: true, success: true, data: { id: id, deleted: true }, deleted: true }
+        : { ok: false, error: 'USER_NOT_FOUND', message: 'User tidak ditemukan.' };
+    case 'createReport':
+      result = createReport(data, context);
+      return { ok: true, success: true, data: result, report: result };
+    case 'getReport':
+      result = getReportById(id, {
+        includeDeleted: context.role === 'ADMIN' ||
+          context.role === 'SUPERADMIN'
+          ? data.includeDeleted
+          : false
+      });
+      if (result && !canAccessReport(result, context)) {
+        return getForbiddenResponse();
+      }
+      return result
+        ? { ok: true, success: true, data: result, report: result }
+        : { ok: false, error: 'REPORT_NOT_FOUND', message: 'Laporan tidak ditemukan.' };
+    case 'getReports':
+      result = getReports(data, context);
+      return { ok: true, success: true, data: result, reports: result };
+    case 'updateReport':
+      result = getReportById(id, { includeDeleted: true });
+
+      if (result && !canAccessReport(result, context)) {
+        return getForbiddenResponse();
+      }
+
+      if (context.role === 'PETUGAS') {
+        data = {
+          status: data.status,
+          pelaksanaan: data.pelaksanaan,
+          laporanAwal: data.laporanAwal
+            ? {
+                konfirmasiPenugasan: data.laporanAwal.konfirmasiPenugasan,
+                dokumentasi: data.laporanAwal.dokumentasi
+              }
+            : undefined
+        };
+      }
+
+      result = updateReport(id, data, context);
+      return result
+        ? { ok: true, success: true, data: result, report: result }
+        : { ok: false, error: 'REPORT_NOT_FOUND', message: 'Laporan tidak ditemukan.' };
+    case 'deleteReport':
+      result = deleteReport(id, context);
+      return result
+        ? { ok: true, success: true, data: { id: id, deleted: true }, deleted: true }
+        : { ok: false, error: 'REPORT_NOT_FOUND', message: 'Laporan tidak ditemukan.' };
+    default:
+      return null;
+  }
+}
+
+
+function getAllowedRolesForAction(action) {
+
+  if (action === 'getUser') {
+    return ['ADMIN', 'SUPERADMIN'];
+  }
+
+  if (action === 'initializeMasterWilayah') {
+    return ['SUPERADMIN'];
+  }
+
+  if (
+    action === 'saveUsers' ||
+    action === 'syncAll' ||
+    /^(create|update|delete)User$/.test(action) ||
+    action === 'createReport' ||
+    action === 'deleteReport' ||
+    action === 'saveReports'
+  ) {
+    return ['ADMIN', 'SUPERADMIN'];
+  }
+
+  return null;
+}
+
+
+function getApiErrorResponse(error) {
+
+  Logger.log('API ERROR: ' + error.toString());
+
+  return {
+    ok: false,
+    success: false,
+    error: {
+      code: 'INTERNAL_ERROR',
+      message: 'Permintaan tidak dapat diproses.'
+    }
+  };
 }
 
 
@@ -2090,6 +3173,8 @@ function parseRequestPayload(e) {
         token: parameter.token || nestedData.token || '',
         username: parameter.username || nestedData.username || '',
         password: parameter.password || nestedData.password || '',
+        id: parameter.id || nestedData.id || '',
+        userId: parameter.userId || nestedData.userId || '',
         reportId: parameter.reportId || nestedData.reportId || '',
         images: parameter.images || nestedData.images || []
       };
@@ -2167,7 +3252,6 @@ function parseRequestPayload(e) {
 // =========================================================
 
 function doGet(e) {
-
   const response = doGetJson(e);
   const callback = String(e && e.parameter && e.parameter.callback || '');
 
@@ -2183,40 +3267,22 @@ function doGet(e) {
 
 function doGetJson(e) {
 
+  return handleRequest(e);
+}
+
+
+// =========================================================
+// DO POST
+// =========================================================
+
+function handleRequest(e) {
+
   try {
 
     const payload =
       parseRequestPayload(e);
 
-
-    if (payload.action === 'login') {
-
-      return ContentService
-        .createTextOutput(
-          JSON.stringify(loginUser(payload))
-        )
-        .setMimeType(
-          ContentService.MimeType.JSON
-        );
-
-    }
-
-
-    if (payload.action === 'logout') {
-
-      return ContentService
-        .createTextOutput(
-          JSON.stringify(logoutUser(getPayloadToken(payload)))
-        )
-        .setMimeType(
-          ContentService.MimeType.JSON
-        );
-
-    }
-
-
     if (!payload.action) {
-
       return ContentService
         .createTextOutput(
           JSON.stringify({
@@ -2226,194 +3292,8 @@ function doGetJson(e) {
             message: 'Google Apps Script berjalan.'
           })
         )
-        .setMimeType(
-          ContentService.MimeType.JSON
-        );
-
+        .setMimeType(ContentService.MimeType.JSON);
     }
-
-
-    if (payload.action === 'initializeDatabase') {
-
-      return ContentService
-        .createTextOutput(
-          JSON.stringify(initializeDatabase())
-        )
-        .setMimeType(
-          ContentService.MimeType.JSON
-        );
-
-    }
-
-
-    const authorization =
-      authorizeRequest(
-        payload,
-        payload.action === 'saveUsers' ||
-        payload.action === 'syncAll'
-          ? ['ADMIN', 'SUPERADMIN']
-          : null
-      );
-
-
-    if (!authorization.ok) {
-
-      return ContentService
-        .createTextOutput(
-          JSON.stringify(authorization)
-        )
-        .setMimeType(
-          ContentService.MimeType.JSON
-        );
-
-    }
-
-
-    if (
-      payload.action ===
-      'syncAll'
-    ) {
-
-      const result =
-        syncAllData(
-          payload.data ||
-          payload
-        );
-
-
-      return ContentService
-        .createTextOutput(
-          JSON.stringify({
-            ok: true,
-            result: result
-          })
-        )
-        .setMimeType(
-          ContentService.MimeType.JSON
-        );
-
-    }
-
-
-    if (
-      payload.action ===
-      'getData'
-    ) {
-
-      return ContentService
-        .createTextOutput(
-          JSON.stringify({
-            ok: true,
-            data:
-              getDataFromSheetCached()
-          })
-        )
-        .setMimeType(
-          ContentService.MimeType.JSON
-        );
-
-    }
-
-
-    if (
-      payload.action ===
-      'saveUsers'
-    ) {
-
-      const count =
-        saveUsersToSheet(
-          Array.isArray(
-            payload.data
-          )
-            ? payload.data
-            : []
-        );
-
-
-      return ContentService
-        .createTextOutput(
-          JSON.stringify({
-            ok: true,
-            usersCount: count
-          })
-        )
-        .setMimeType(
-          ContentService.MimeType.JSON
-        );
-
-    }
-
-
-    if (
-      payload.action ===
-      'saveReports'
-    ) {
-
-      const count =
-        saveReportsToSheet(
-          Array.isArray(
-            payload.data
-          )
-            ? payload.data
-            : []
-        );
-
-
-      return ContentService
-        .createTextOutput(
-          JSON.stringify({
-            ok: true,
-            reportsCount: count
-          })
-        )
-        .setMimeType(
-          ContentService.MimeType.JSON
-        );
-
-    }
-
-
-    return ContentService
-      .createTextOutput(
-        JSON.stringify({
-          ok: true,
-          data:
-            getDataFromSheetCached()
-        })
-      )
-      .setMimeType(
-        ContentService.MimeType.JSON
-      );
-
-
-  } catch (error) {
-
-    return ContentService
-      .createTextOutput(
-        JSON.stringify({
-          ok: false,
-          error:
-            error.toString()
-        })
-      )
-      .setMimeType(
-        ContentService.MimeType.JSON
-      );
-
-  }
-}
-
-
-// =========================================================
-// DO POST
-// =========================================================
-
-function doPost(e) {
-
-  try {
-
-    const payload =
-      parseRequestPayload(e);
 
 
     if (payload.action === 'login') {
@@ -2444,6 +3324,16 @@ function doPost(e) {
 
     if (payload.action === 'initializeDatabase') {
 
+      const setupAuthorization = getUsersFromSheet().length === 0
+        ? { ok: true }
+        : authorizeRequest(payload, ['SUPERADMIN']);
+
+      if (!setupAuthorization.ok) {
+        return ContentService
+          .createTextOutput(JSON.stringify(setupAuthorization))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
       return ContentService
         .createTextOutput(
           JSON.stringify(initializeDatabase())
@@ -2458,10 +3348,7 @@ function doPost(e) {
     const authorization =
       authorizeRequest(
         payload,
-        payload.action === 'saveUsers' ||
-        payload.action === 'syncAll'
-          ? ['ADMIN', 'SUPERADMIN']
-          : null
+        getAllowedRolesForAction(payload.action)
       );
 
 
@@ -2475,6 +3362,19 @@ function doPost(e) {
           ContentService.MimeType.JSON
         );
 
+    }
+
+
+    const crudResult = handleCrudAction(payload, authorization);
+
+    if (crudResult) {
+      return ContentService
+        .createTextOutput(
+          JSON.stringify(crudResult)
+        )
+        .setMimeType(
+          ContentService.MimeType.JSON
+        );
     }
 
 
@@ -2514,7 +3414,7 @@ function doPost(e) {
           JSON.stringify({
             ok: true,
             data:
-              getDataFromSheetCached()
+              getDataForContext(authorization)
           })
         )
         .setMimeType(
@@ -2629,6 +3529,29 @@ function doPost(e) {
       }
 
 
+      const report = getReportById(reportId);
+
+      if (!report) {
+        return ContentService
+          .createTextOutput(
+            JSON.stringify({
+              ok: false,
+              error: 'REPORT_NOT_FOUND',
+              message: 'Laporan tidak ditemukan.'
+            })
+          )
+          .setMimeType(
+            ContentService.MimeType.JSON
+          );
+      }
+
+      if (!canAccessReport(report, authorization)) {
+        return ContentService
+          .createTextOutput(JSON.stringify(getForbiddenResponse()))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+
       const result =
         uploadImagesToDrive(
           reportId,
@@ -2667,17 +3590,18 @@ function doPost(e) {
 
     return ContentService
       .createTextOutput(
-        JSON.stringify({
-          ok: false,
-          error:
-            error.toString()
-        })
+        JSON.stringify(getApiErrorResponse(error))
       )
       .setMimeType(
         ContentService.MimeType.JSON
       );
 
   }
+}
+
+
+function doPost(e) {
+  return handleRequest(e);
 }
 
 
@@ -2915,12 +3839,10 @@ function appendDocumentationRows(
   fileEntries
 ) {
 
-  ensureRequiredSheets();
-
-
   const sheet =
-    getSheet(
-      SHEET_NAMES.DOKUMENTASI
+    getRequiredSheet(
+      SHEET_NAMES.DOKUMENTASI,
+      ['reportId', 'namaFile', 'url', 'uploadedAt']
     );
 
 
@@ -2990,82 +3912,35 @@ function attachDocumentationToReportRaw(
   fileEntries
 ) {
 
-  const sheet =
-    getSheet(
-      SHEET_NAMES.LAPORAN
-    );
-
-  const values =
-    sheet
-      .getDataRange()
-      .getValues();
-
-  if (values.length <= 1) {
-    return false;
-  }
-
-  const headers = values[0].map(function (header) {
-    return String(header || '').trim();
-  });
-
-  const idIndex = headers.indexOf('id');
-  const rawIndex = headers.indexOf('rawDataJson');
-  const updatedAtIndex = headers.indexOf('updatedAt');
-
-  if (idIndex === -1 || rawIndex === -1) {
-    return false;
-  }
-
-  const cleanReportId = String(reportId || '').trim();
+  const sheet = getSheet(SHEET_NAMES.LAPORAN);
+  const found = getObjectByIdFromSheet(sheet, reportId, 'id');
   const entries = Array.isArray(fileEntries) ? fileEntries : [];
   const urls = entries.map(function (entry) {
     return entry && entry.url ? String(entry.url).trim() : '';
   }).filter(Boolean);
 
-  if (!cleanReportId || urls.length === 0) {
+  if (!found || urls.length === 0) {
     return false;
   }
 
-  for (let rowIndex = 1; rowIndex < values.length; rowIndex++) {
+  const report = parseReportSheetObject(
+    found.object,
+    getDocumentationForReportId(reportId)
+  );
+  report.laporanAwal = report.laporanAwal || {};
+  report.pelaksanaan = report.pelaksanaan || {};
+  const documentation = (report.laporanAwal.dokumentasi || [])
+    .concat(report.pelaksanaan.dokumentasi || [], urls)
+    .filter(function (item, index, list) {
+      return item && list.indexOf(item) === index;
+    });
+  report.laporanAwal.dokumentasi = documentation;
+  report.pelaksanaan.dokumentasi = documentation;
+  report.updatedAt = new Date().toISOString();
 
-    if (String(values[rowIndex][idIndex] || '').trim() !== cleanReportId) {
-      continue;
-    }
-
-    const raw = safeJsonParse(values[rowIndex][rawIndex]) || {};
-    raw.laporanAwal = raw.laporanAwal || {};
-    raw.pelaksanaan = raw.pelaksanaan || {};
-
-    const currentInitial = Array.isArray(raw.laporanAwal.dokumentasi)
-      ? raw.laporanAwal.dokumentasi
-      : [];
-    const currentExecution = Array.isArray(raw.pelaksanaan.dokumentasi)
-      ? raw.pelaksanaan.dokumentasi
-      : [];
-    const documentation = currentInitial
-      .concat(currentExecution, urls)
-      .filter(function (item, index, list) {
-        return item && list.indexOf(item) === index;
-      });
-
-    raw.laporanAwal.dokumentasi = documentation;
-    raw.pelaksanaan.dokumentasi = documentation;
-    raw.updatedAt = new Date().toISOString();
-
-    sheet
-      .getRange(rowIndex + 1, rawIndex + 1)
-      .setValue(JSON.stringify(raw));
-
-    if (updatedAtIndex !== -1) {
-      sheet
-        .getRange(rowIndex + 1, updatedAtIndex + 1)
-        .setValue(raw.updatedAt);
-    }
-
-    return true;
-  }
-
-  return false;
+  const normalized = normalizeReportForSheet(report);
+  updateObjectInSheet(sheet, reportId, normalized, 'id');
+  return true;
 }
 
 
@@ -3350,24 +4225,26 @@ function uploadImagesToDrive(
   const persistenceErrors = [];
 
   if (saved.length > 0) {
-    try {
-      appendDocumentationRows(
-        cleanReportId,
-        saved
-      );
-    } catch (error) {
-      persistenceErrors.push('Dokumentasi: ' + error.toString());
-      Logger.log('Penyimpanan dokumentasi gagal: ' + error.toString());
-    }
-
-    try {
-      if (!attachDocumentationToReportRaw(cleanReportId, saved)) {
-        persistenceErrors.push('rawDataJson laporan tidak ditemukan.');
+    withWriteLock(function () {
+      try {
+        appendDocumentationRows(
+          cleanReportId,
+          saved
+        );
+      } catch (error) {
+        persistenceErrors.push('Dokumentasi: ' + error.toString());
+        Logger.log('Penyimpanan dokumentasi gagal: ' + error.toString());
       }
-    } catch (error) {
-      persistenceErrors.push('rawDataJson: ' + error.toString());
-      Logger.log('Penempelan link ke rawDataJson gagal: ' + error.toString());
-    }
+
+      try {
+        if (!attachDocumentationToReportRaw(cleanReportId, saved)) {
+          persistenceErrors.push('rawDataJson laporan tidak ditemukan.');
+        }
+      } catch (error) {
+        persistenceErrors.push('rawDataJson: ' + error.toString());
+        Logger.log('Penempelan link ke rawDataJson gagal: ' + error.toString());
+      }
+    });
   }
 
   invalidateDataCache();
@@ -3735,6 +4612,12 @@ function resetDefaultDatabase() {
             ),
 
             awal.konfirmasiPenugasan || '',
+
+            false,
+
+            '',
+
+            '',
 
             JSON.stringify(report)
 

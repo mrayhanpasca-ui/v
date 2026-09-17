@@ -296,7 +296,7 @@
         report
       );
 
-      await saveReports();
+      await saveReportRecord(report);
 
       renderStats();
 

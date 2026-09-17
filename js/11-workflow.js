@@ -129,16 +129,21 @@ function renderWorkflowField(field, value, editMode, location = {}) {
   let input = '';
 
   if (field.type === 'location') {
+    const locationPrefix = editMode ? 'edit-' : 'f-';
+    const locationData = location || {};
     input = `
       <div class="location-box">
         <input type="text" id="${id}" value="${escapeDashboardAttribute(value || '')}"
-          data-koordinat="${escapeDashboardAttribute(location.latitude !== null && location.latitude !== undefined && location.longitude !== null && location.longitude !== undefined ? location.latitude + ',' + location.longitude : '')}"
-          data-maps="${escapeDashboardAttribute(location.googleMapsUrl || '')}"
+          data-koordinat="${escapeDashboardAttribute(locationData.latitude !== null && locationData.latitude !== undefined && locationData.longitude !== null && locationData.longitude !== undefined ? locationData.latitude + ',' + locationData.longitude : '')}"
+          data-maps="${escapeDashboardAttribute(locationData.mapsUrl || locationData.googleMapsUrl || '')}"
           oninput="this.dataset.koordinat=''; this.dataset.maps=''"
-          placeholder="Masukkan alamat / koordinat / Share Location WhatsApp">
+          placeholder="Alamat asli, koordinat, atau Share Location WhatsApp">
         <div class="loc-btn-row">
-          <button type="button" class="btn btn-ghost btn-sm" onclick="ubahKeAlamat('lokasi', this)">📍 Ubah ke Alamat</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="deteksiWilayah('lokasi', this)">🔍 Deteksi Wilayah</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="bukaGoogleMaps('lokasi')">🗺️ Buka Google Maps</button>
+        </div>
+        <div class="location-result">
+          ${renderLocationAdminFields(locationPrefix, locationData)}
         </div>
       </div>`;
   } else if (field.type === 'select') {
@@ -260,6 +265,7 @@ async function submitReport() {
 
 async function saveReportAndUploadInBackground(report, files) {
   const uploadFiles = Array.isArray(files) ? files : [];
+  activeUploadCount += 1;
 
   showUploadStatus(
     'Menyimpan laporan',
@@ -267,9 +273,10 @@ async function saveReportAndUploadInBackground(report, files) {
   );
 
   try {
-    await saveReports();
+    await saveReportRecord(report);
 
     if (uploadFiles.length === 0) {
+      await showDashboard(true);
       showUploadStatus(
         'Laporan berhasil disimpan',
         `Laporan ${report.id} sudah tersimpan di database.`
@@ -294,8 +301,8 @@ async function saveReportAndUploadInBackground(report, files) {
     report.laporanAwal.dokumentasi = [...new Set([...(report.laporanAwal.dokumentasi || []), ...urls])];
     report.pelaksanaan.dokumentasi = [...new Set([...(report.pelaksanaan.dokumentasi || []), ...urls])];
     report.updatedAt = getCurrentDateTime();
-    await saveReports();
-    await showDashboard();
+    await saveReportRecord(report);
+    await showDashboard(true);
 
     showUploadStatus(
       uploadResult.accepted
@@ -304,18 +311,22 @@ async function saveReportAndUploadInBackground(report, files) {
         ? 'Upload foto selesai dengan peringatan'
         : 'Upload foto selesai',
       uploadResult.accepted
-        ? `Pengiriman ${uploadFiles.length} foto sedang diproses. Muat ulang data beberapa saat lagi untuk melihat hasilnya.`
+        ? `Sebanyak ${uploadFiles.length} foto laporan ${report.id} berhasil dikirim dan sudah diverifikasi.`
         : uploadResult.persistenceErrors && uploadResult.persistenceErrors.length
         ? `${urls.length} foto tersimpan di Drive, tetapi sinkronisasi link laporan perlu diulang.`
         : `${urls.length} foto laporan ${report.id} berhasil disimpan ke Drive.`
     );
   }
   catch (error) {
+    await showDashboard(true);
     showUploadStatus(
       'Upload foto gagal',
       `${getFriendlyUploadError(error, 'Foto belum berhasil disimpan ke Drive.')} Laporan tetap tersimpan.`,
       true
     );
+  }
+  finally {
+    activeUploadCount = Math.max(0, activeUploadCount - 1);
   }
 }
 
@@ -345,13 +356,28 @@ async function collectInitialReport() {
         return null;
       }
       const coordinates = element.dataset.koordinat || '';
-      const parsed = coordinates ? coordinates.split(',').map(Number) : extractLatLng(rawLocation);
+      const coordinateParts = coordinates.split(',').map(Number);
+      const parsed = coordinateParts.length === 2 && coordinateParts.every(Number.isFinite)
+        ? { lat: coordinateParts[0], lng: coordinateParts[1] }
+        : extractLatLng(rawLocation);
+      const administrative = ['kelurahan', 'kecamatan', 'kabupaten', 'provinsi', 'kodePos'].reduce((result, key) => {
+        const input = document.getElementById(`f-lokasi-${key}`);
+        result[key] = input ? input.value.trim() : '';
+        return result;
+      }, {});
       location = {
+        ...(element._locationData || {}),
+        alamatAsli: rawLocation,
         inputAsli: rawLocation,
         alamat: rawLocation,
-        latitude: parsed ? parsed[0] : null,
-        longitude: parsed ? parsed[1] : null,
-        googleMapsUrl: element.dataset.maps || (parsed ? buildMapsUrlFromKoordinat(parsed.join(',')) : buildMapsUrlFromAlamat(rawLocation)),
+        ...administrative,
+        latitude: parsed ? parsed.lat : null,
+        longitude: parsed ? parsed.lng : null,
+        mapsUrl: element.dataset.maps || (parsed ? buildMapsUrlFromKoordinat(`${parsed.lat},${parsed.lng}`) : buildMapsUrlFromAlamat(rawLocation)),
+        googleMapsUrl: element.dataset.maps || (parsed ? buildMapsUrlFromKoordinat(`${parsed.lat},${parsed.lng}`) : buildMapsUrlFromAlamat(rawLocation)),
+        sumberWilayah: Object.values(administrative).some(Boolean)
+          ? 'admin'
+          : (element._locationData?.sumberWilayah || 'belum_ditentukan'),
         sourceType: detectLocationSource(rawLocation),
         reverseGeocodingStatus: GEOCODING_STATUS.BELUM_DICEK,
         updatedAt: getCurrentDateTime()
@@ -467,7 +493,7 @@ function adminInitialEditFields(report) {
   };
   return CATEGORY_CONFIG[categoryKey].fields.map(field => {
     let value = awal[field.key] ?? legacyValue[field.key] ?? '';
-    if (field.type === 'location') value = awal.lokasi?.alamat || awal.lokasi?.inputAsli || '';
+    if (field.type === 'location') value = awal.lokasi?.alamatAsli || awal.lokasi?.inputAsli || awal.lokasi?.alamat || '';
     if (field.type === 'members') value = assignedNames;
     if (field.type === 'leader') value = { options: assignedNames, selected: awal.pemimpinRegu || '' };
     return renderWorkflowField(field, value, true, awal.lokasi || {});
@@ -505,6 +531,12 @@ async function saveAdminReport(id) {
     ? { lat: coordinateParts[0], lng: coordinateParts[1] }
     : extractLatLng(locationText);
   const location = report.laporanAwal.lokasi || {};
+  const administrative = ['kelurahan', 'kecamatan', 'kabupaten', 'provinsi', 'kodePos'].reduce((result, key) => {
+    const input = document.getElementById(`edit-lokasi-${key}`) || document.getElementById(`f-lokasi-${key}`);
+    result[key] = input ? input.value.trim() : (location[key] || '');
+    return result;
+  }, {});
+  const regionChanged = Object.keys(administrative).some(key => administrative[key] !== String(location[key] || ''));
 
   const category = CATEGORY_CONFIG[report.laporanAwal.jenisLaporan || report.kategori || activeCategory];
   const initialValues = {};
@@ -543,11 +575,16 @@ async function saveAdminReport(id) {
     dokumentasi: uploadedDocumentUrls,
     lokasi: {
     ...location,
-    inputAsli: location.inputAsli || locationText,
+    ...(locationElement._locationData || {}),
+    alamatAsli: locationText,
+    inputAsli: locationText,
     alamat: locationText,
+    ...administrative,
     latitude: coords ? coords.lat : location.latitude,
     longitude: coords ? coords.lng : location.longitude,
-    googleMapsUrl: locationElement.dataset.maps || (coords ? buildMapsUrlFromKoordinat(coords.lat + ',' + coords.lng) : buildMapsUrlFromAlamat(locationText)),
+    mapsUrl: locationElement.dataset.maps || location.mapsUrl || (coords ? buildMapsUrlFromKoordinat(coords.lat + ',' + coords.lng) : buildMapsUrlFromAlamat(locationText)),
+    googleMapsUrl: locationElement.dataset.maps || location.googleMapsUrl || (coords ? buildMapsUrlFromKoordinat(coords.lat + ',' + coords.lng) : buildMapsUrlFromAlamat(locationText)),
+    sumberWilayah: regionChanged ? 'admin' : (location.sumberWilayah || ''),
     sourceType: detectLocationSource(locationText),
     updatedAt: getCurrentDateTime()
     }
@@ -594,17 +631,28 @@ async function saveAdminReport(id) {
   saveReportAndUploadInBackground(report, selectedImageFiles);
 }
 
-function openPetugasTask(id, event) {
+async function openPetugasTask(id, event) {
   if (event) event.stopPropagation();
   if (!isPetugas()) {
     showToast('Menu ini hanya untuk Petugas.', true);
     return;
   }
 
-  const report = getMyPetugasReports().find(item => item.id === id);
+  let report = getMyPetugasReports().find(item => item.id === id);
   if (!report) {
     showToast('Tugas tidak ditemukan.', true);
     return;
+  }
+
+  const detailedReport = await getReportById(id);
+
+  if (detailedReport) {
+    const index = reports.findIndex(item => item.id === id);
+    report = detailedReport;
+
+    if (index !== -1) {
+      reports[index] = detailedReport;
+    }
   }
 
   const awal = report.laporanAwal || {};
@@ -817,7 +865,7 @@ async function saveManagedUser(id) {
     : document.getElementById('user-unit').value;
   if (password) user.password = password;
   if (!existing) users.push(user);
-  await saveUsers();
+  await saveUserRecord(user);
   appendSystemAuditLog(existing ? 'MENGUBAH_USER' : 'MEMBUAT_USER', before, { ...user, password: undefined });
   renderUserManagement();
   showToast('User berhasil disimpan.');
@@ -831,7 +879,7 @@ async function toggleManagedUser(id) {
   }
   const before = user.aktif !== false;
   user.aktif = !before;
-  await saveUsers();
+  await saveUserRecord(user);
   appendSystemAuditLog(user.aktif ? 'MENGAKTIFKAN_USER' : 'MENONAKTIFKAN_USER', before, user.aktif);
   renderUserManagement();
 }
@@ -842,7 +890,7 @@ async function resetManagedPassword(id) {
   const password = window.prompt('Masukkan password baru untuk ' + user.username + ':');
   if (!password) return;
   user.password = password;
-  await saveUsers();
+  await saveUserRecord(user);
   appendSystemAuditLog('RESET_PASSWORD_USER', null, { userId: user.id });
   showToast('Password berhasil diubah.');
 }
@@ -947,8 +995,8 @@ async function deleteSuperadminReport(id, event) {
     status: report.status,
     createdBy: report.createdBy
   }, null);
+  await deleteReport(id);
   reports = reports.filter(item => item.id !== id);
-  await saveReports();
   showDashboard();
   showToast('Laporan berhasil dihapus.');
 }
@@ -968,7 +1016,7 @@ function requestDeleteConfirmation(report) {
           <button type="button" class="delete-confirmation-close" aria-label="Tutup">×</button>
         </div>
         <div class="delete-confirmation-body">
-          <p>Laporan ini akan dihapus permanen dan tidak dapat dikembalikan.</p>
+          <p>Laporan akan dinonaktifkan dari daftar dan tetap tersimpan untuk audit.</p>
           <div class="delete-confirmation-summary">
             <strong>${escapeDashboardHtml(report.id)}</strong>
             <span>${escapeDashboardHtml(report.laporanAwal?.lokasi?.alamat || report.laporanAwal?.lokasi?.inputAsli || 'Lokasi belum diisi')}</span>
@@ -976,7 +1024,7 @@ function requestDeleteConfirmation(report) {
         </div>
         <div class="delete-confirmation-actions">
           <button type="button" class="btn btn-ghost delete-cancel">Batal</button>
-          <button type="button" class="btn delete-confirm">Hapus Permanen</button>
+          <button type="button" class="btn delete-confirm">Hapus Laporan</button>
         </div>
       </section>
     `;

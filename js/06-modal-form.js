@@ -120,20 +120,20 @@
               input = `
                 <div class="location-box">
 
-                  <input
-                    type="text"
-                    id="f-${f.key}"
-                    placeholder="Masukkan alamat / koordinat / Share Location WhatsApp"
-                  >
+                    <input
+                      type="text"
+                      id="f-${f.key}"
+                      placeholder="Alamat asli, koordinat, atau Share Location WhatsApp"
+                    >
 
                   <div class="loc-btn-row">
 
                     <button
                       type="button"
                       class="btn btn-ghost btn-sm"
-                      onclick="ubahKeAlamat('${f.key}', this)"
+                      onclick="deteksiWilayah('${f.key}', this)"
                     >
-                      📍 Ubah ke Alamat
+                      🔍 Deteksi Wilayah
                     </button>
 
                     <button
@@ -144,6 +144,23 @@
                       🗺️ Buka Google Maps
                     </button>
 
+                  </div>
+
+                  <div class="location-result">
+                    <div class="location-result-heading">Wilayah administratif <span>hasil deteksi dapat dikoreksi</span></div>
+                    ${[
+                      ['kelurahan', 'Kelurahan/Desa'],
+                      ['kecamatan', 'Kecamatan'],
+                      ['kabupaten', 'Kabupaten/Kota'],
+                      ['provinsi', 'Provinsi'],
+                      ['kodePos', 'Kode Pos']
+                    ].map(([key, label]) => `
+                      <label class="location-admin-field">
+                        <span>${label}</span>
+                        <input type="text" id="f-${f.key}-${key}" placeholder="${label} (opsional)">
+                      </label>
+                    `).join('')}
+                    <small class="loc-hint">Alamat asli tidak akan ditimpa oleh hasil deteksi.</small>
                   </div>
 
                 </div>

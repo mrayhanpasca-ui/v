@@ -19,7 +19,7 @@ let currentSort = 'terbaru';
    DASHBOARD UTAMA
 ========================================================= */
 
-async function showDashboard() {
+async function showDashboard(forceRefresh = false) {
 
   const container =
     document.getElementById('dashboard-container');
@@ -70,6 +70,7 @@ async function showDashboard() {
   renderDashboardShell();
 
   const needsInitialLoad =
+    forceRefresh ||
     !Array.isArray(users) || users.length === 0 ||
     !Array.isArray(reports) || reports.length === 0;
 
@@ -83,19 +84,13 @@ async function showDashboard() {
   );
 
   try {
-    const loadResults = await Promise.allSettled([
-      typeof loadUsers === 'function'
-        ? loadUsers()
-        : Promise.resolve([]),
-      typeof loadReports === 'function'
-        ? loadReports()
-        : Promise.resolve([])
-    ]);
-
-    const reportsResult = loadResults[1];
-
-    if (reportsResult.status === 'rejected') {
-      throw reportsResult.reason;
+    if (typeof loadDashboardData === 'function') {
+      await loadDashboardData();
+    } else {
+      await Promise.all([
+        typeof loadUsers === 'function' ? loadUsers() : Promise.resolve([]),
+        typeof loadReports === 'function' ? loadReports() : Promise.resolve([])
+      ]);
     }
 
     renderDashboardShell();
@@ -1388,8 +1383,22 @@ function renderDashboardDetail(
 
   if (
     lokasi.alamat ||
-    lokasi.inputAsli
+    lokasi.alamatAsli ||
+    lokasi.inputAsli ||
+    lokasi.latitude !== null ||
+    lokasi.longitude !== null
   ) {
+
+    const locationRows = [
+      ['Kelurahan/Desa', lokasi.kelurahan],
+      ['Kecamatan', lokasi.kecamatan],
+      ['Kabupaten/Kota', lokasi.kabupaten],
+      ['Provinsi', lokasi.provinsi],
+      ['Kode Pos', lokasi.kodePos]
+    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '');
+    const locationStatus = lokasi.statusWilayah || 'BELUM_DIDETEKSI';
+    const detectedOutside = lokasi.hasilDeteksiKabupaten &&
+      lokasi.hasilDeteksiKabupaten !== SYSTEM_REGION.kabupaten;
 
     html += `
 
@@ -1401,11 +1410,26 @@ function renderDashboardDetail(
 
         <div class="dv">
 
-          ${escapeDashboardHtml(
-            lokasi.alamat ||
-            lokasi.inputAsli
-          )}
+          <strong>Alamat asli</strong><br>
+          ${escapeDashboardHtml(lokasi.alamatAsli || lokasi.inputAsli || lokasi.alamat || 'Belum diisi')}
 
+        </div>
+
+        ${locationRows.length ? `
+          <div class="location-detail-grid">
+            ${locationRows.map(([label, value]) => `
+              <div>
+                <span>${label}</span>
+                <strong>${escapeDashboardHtml(value)}</strong>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div class="location-status ${detectedOutside ? 'is-warning' : ''}">
+          <span>Status wilayah</span>
+          <strong>${escapeDashboardHtml(locationStatus.replaceAll('_', ' '))}</strong>
+          ${detectedOutside ? `<small>Hasil deteksi: ${escapeDashboardHtml(lokasi.hasilDeteksiKabupaten)}${lokasi.hasilDeteksiProvinsi ? `, ${escapeDashboardHtml(lokasi.hasilDeteksiProvinsi)}` : ''}. Laporan tetap berada dalam konteks ${escapeDashboardHtml(SYSTEM_REGION.kabupaten)}.</small>` : ''}
         </div>
 
 
@@ -1417,7 +1441,7 @@ function renderDashboardDetail(
 
           ? `
 
-            <div class="dv mono">
+            <div class="dv mono location-coordinates">
 
               (${escapeDashboardHtml(
                 lokasi.latitude
@@ -1434,7 +1458,7 @@ function renderDashboardDetail(
 
 
         ${
-          lokasi.googleMapsUrl
+          (lokasi.mapsUrl || lokasi.googleMapsUrl)
 
           ? `
 
@@ -1443,7 +1467,7 @@ function renderDashboardDetail(
               <a
                 class="loc-maps-link"
                 href="${escapeDashboardAttribute(
-                  lokasi.googleMapsUrl
+                  lokasi.mapsUrl || lokasi.googleMapsUrl
                 )}"
                 target="_blank"
                 onclick="event.stopPropagation()"
@@ -2457,7 +2481,7 @@ function openAuditLog() {
    ADMIN REPORT
 ========================================================= */
 
-function openAdminReport(
+async function openAdminReport(
   id,
   event
 ) {
@@ -2467,7 +2491,7 @@ function openAdminReport(
   }
 
 
-  const report =
+  let report =
     getAllReports().find(
       item =>
         item.id === id
@@ -2482,6 +2506,17 @@ function openAdminReport(
 
     return;
 
+  }
+
+  const detailedReport = await getReportById(id);
+
+  if (detailedReport) {
+    const index = reports.findIndex(item => item.id === id);
+    report = detailedReport;
+
+    if (index !== -1) {
+      reports[index] = detailedReport;
+    }
   }
 
 

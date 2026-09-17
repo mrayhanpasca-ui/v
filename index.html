@@ -518,14 +518,16 @@
        TOAST
   ====================================================== -->
 
-  <div
-    class="upload-status"
-    id="upload-status"
-    role="status"
-    aria-live="polite"
-  >
+  <div class="notification-stack" id="notification-stack">
 
-    <div class="upload-status-icon" id="upload-status-icon">↑</div>
+    <div
+      class="upload-status"
+      id="upload-status"
+      role="status"
+      aria-live="polite"
+    >
+
+    <div class="upload-status-icon" id="upload-status-icon" aria-hidden="true"></div>
 
     <div class="upload-status-content">
       <strong id="upload-status-title">Upload sedang berlangsung</strong>
@@ -542,12 +544,12 @@
       ✕
     </button>
 
-  </div>
+    </div>
 
-  <div
-    class="toast"
-    id="toast"
-  >
+    <div
+      class="toast"
+      id="toast"
+    >
 
 
     <span class="tdot"></span>
@@ -557,6 +559,8 @@
       Tersimpan
     </span>
 
+
+    </div>
 
   </div>
 

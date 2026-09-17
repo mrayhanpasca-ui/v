@@ -6,6 +6,7 @@ const GOOGLE_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxryKv
 
 let users = [];
 let reports = [];
+let masterWilayah = [];
 let currentUser = null;
 let saveReportsQueue = Promise.resolve();
 
@@ -20,6 +21,26 @@ const API_REQUEST_RETRY_DELAY_MS = 1500;
 function cloneData(data) {
 
   return JSON.parse(JSON.stringify(data));
+
+}
+
+
+function getApiErrorMessage(error, fallback = 'Response Apps Script gagal.') {
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object') {
+    return String(
+      error.message ||
+      error.error ||
+      error.code ||
+      fallback
+    );
+  }
+
+  return String(error || fallback);
 
 }
 
@@ -45,11 +66,20 @@ async function fetchJsonFromGoogleSheet(payload = {}) {
     params.set('data', JSON.stringify(payload.data));
   }
 
+  ['id', 'reportId', 'userId'].forEach(key => {
+    if (payload[key] !== undefined && payload[key] !== null) {
+      params.set(key, String(payload[key]));
+    }
+  });
+
   const usePost = [
-    'syncAll',
-    'saveUsers',
-    'saveReports',
-    'uploadImages'
+    'uploadImages',
+    'createUser',
+    'updateUser',
+    'deleteUser',
+    'createReport',
+    'updateReport',
+    'deleteReport'
   ].includes(action);
 
   if (action === 'login' || !usePost) {
@@ -94,7 +124,11 @@ async function fetchJsonFromGoogleSheet(payload = {}) {
 
     const result = await response.json();
 
-    if (result && result.error === 'TOKEN_INVALID_OR_EXPIRED') {
+    const errorCode = result && typeof result.error === 'object'
+      ? result.error.code
+      : result?.error;
+
+    if (errorCode === 'TOKEN_INVALID_OR_EXPIRED') {
       if (typeof clearStoredSession === 'function') {
         clearStoredSession();
       }
@@ -104,7 +138,10 @@ async function fetchJsonFromGoogleSheet(payload = {}) {
     }
 
     if (!result || result.ok === false) {
-      throw new Error(result?.error || result?.message || 'Response Apps Script gagal.');
+      throw new Error(getApiErrorMessage(
+        result?.error || result?.message,
+        'Response Apps Script gagal.'
+      ));
     }
 
     return result;
@@ -142,13 +179,20 @@ function fetchJsonpFromGoogleSheet(url, params, attempt = 0) {
     window[callbackName] = result => {
       cleanup();
 
-      if (result && result.error === 'TOKEN_INVALID_OR_EXPIRED') {
+      const errorCode = result && typeof result.error === 'object'
+        ? result.error.code
+        : result?.error;
+
+      if (errorCode === 'TOKEN_INVALID_OR_EXPIRED') {
         if (typeof clearStoredSession === 'function') clearStoredSession();
         if (typeof showLoginScreen === 'function') showLoginScreen();
       }
 
       if (!result || result.ok === false) {
-        reject(new Error(result?.error || result?.message || 'Response Apps Script gagal.'));
+        reject(new Error(getApiErrorMessage(
+          result?.error || result?.message,
+          'Response Apps Script gagal.'
+        )));
         return;
       }
 
@@ -184,11 +228,11 @@ function fetchJsonpFromGoogleSheet(url, params, attempt = 0) {
 async function loadUsers() {
 
   const response = await fetchJsonFromGoogleSheet({
-    action: 'getData'
+    action: 'getUsers'
   });
 
   if (response && response.data) {
-    const fetchedUsers = Array.isArray(response.data.users) ? response.data.users : [];
+    const fetchedUsers = Array.isArray(response.users) ? response.users : [];
 
     users = fetchedUsers.map(normalizeUserRole);
     return users;
@@ -199,24 +243,45 @@ async function loadUsers() {
 }
 
 
-async function saveUsers() {
+async function saveUserRecord(user) {
 
-  await fetchJsonFromGoogleSheet({
-    action: 'saveUsers',
-    data: users
-  });
+  let savedUser;
 
+  try {
+    savedUser = await updateUser(user.id, user);
+  } catch (error) {
+    if (!String(error?.message || '').includes('USER_NOT_FOUND')) {
+      throw error;
+    }
+    savedUser = await createUser(user);
+  }
+
+  const index = users.findIndex(item => item.id === user.id);
+  if (index !== -1 && savedUser) {
+    const nextUser = {
+      ...users[index],
+      ...savedUser
+    };
+    delete nextUser.password;
+    users[index] = nextUser;
+  }
+
+  return savedUser;
 }
 
 
 async function loadReports() {
 
   const response = await fetchJsonFromGoogleSheet({
-    action: 'getData'
+    action: 'getReports',
+    data: {
+      page: 1,
+      pageSize: 20
+    }
   });
 
-  if (response && response.data) {
-    const fetchedReports = Array.isArray(response.data.reports) ? response.data.reports : [];
+  if (response) {
+    const fetchedReports = Array.isArray(response.reports) ? response.reports : [];
 
     reports = fetchedReports;
     return reports;
@@ -224,6 +289,160 @@ async function loadReports() {
 
   throw new Error('Data laporan tidak tersedia di database.');
 
+}
+
+
+async function loadDashboardData() {
+
+  const response = await fetchJsonFromGoogleSheet({
+    action: 'getData'
+  });
+  const data = response && response.data ? response.data : {};
+
+  if (!Array.isArray(data.users) || !Array.isArray(data.reports)) {
+    throw new Error('Data dashboard tidak tersedia di database.');
+  }
+
+  users = data.users.map(normalizeUserRole);
+  reports = data.reports;
+  masterWilayah = Array.isArray(data.masterWilayah) ? data.masterWilayah : [];
+  console.log('MasterWilayah:', masterWilayah);
+  console.log('Jumlah MasterWilayah:', masterWilayah.length);
+
+  return { users, reports };
+
+}
+
+
+async function createReport(report) {
+
+  const response = await fetchJsonFromGoogleSheet({
+    action: 'createReport',
+    data: report
+  });
+
+  return response.report;
+}
+
+
+async function getReportById(reportId) {
+
+  const response = await fetchJsonFromGoogleSheet({
+    action: 'getReport',
+    reportId: reportId
+  });
+
+  return response.report || null;
+}
+
+async function waitForReportPersistence(
+  reportId,
+  minimumDocumentationCount = null,
+  minimumUpdatedAt = null
+) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const savedReport = await getReportById(reportId);
+    const documentation = savedReport?.laporanAwal?.dokumentasi;
+    const documentationCount = Array.isArray(documentation) ? documentation.length : 0;
+
+    if (
+      savedReport &&
+      (minimumDocumentationCount === null || documentationCount >= minimumDocumentationCount) &&
+      (!minimumUpdatedAt || String(savedReport.updatedAt || '') >= String(minimumUpdatedAt))
+    ) {
+      return savedReport;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  return null;
+}
+
+
+async function getReports(options = {}) {
+
+  const response = await fetchJsonFromGoogleSheet({
+    action: 'getReports',
+    data: options
+  });
+
+  return Array.isArray(response.reports) ? response.reports : [];
+}
+
+
+async function getUserById(userId) {
+
+  const response = await fetchJsonFromGoogleSheet({
+    action: 'getUser',
+    userId: userId
+  });
+
+  return response.user || null;
+}
+
+
+async function getUsers(options = {}) {
+
+  const response = await fetchJsonFromGoogleSheet({
+    action: 'getUsers',
+    data: options
+  });
+
+  return Array.isArray(response.users) ? response.users : [];
+}
+
+
+async function updateReport(reportId, report) {
+
+  const response = await fetchJsonFromGoogleSheet({
+    action: 'updateReport',
+    reportId: reportId,
+    data: report
+  });
+
+  return response.report;
+}
+
+
+async function deleteReport(reportId) {
+
+  return fetchJsonFromGoogleSheet({
+    action: 'deleteReport',
+    reportId: reportId
+  });
+}
+
+
+async function createUser(user) {
+
+  const response = await fetchJsonFromGoogleSheet({
+    action: 'createUser',
+    data: user
+  });
+
+  return response.user;
+}
+
+
+async function updateUser(userId, user) {
+
+  const response = await fetchJsonFromGoogleSheet({
+    action: 'updateUser',
+    userId: userId,
+    data: user
+  });
+
+  return response.user;
+}
+
+
+async function deleteUser(userId) {
+
+  return fetchJsonFromGoogleSheet({
+    action: 'deleteUser',
+    userId: userId
+  });
 }
 
 
@@ -250,6 +469,12 @@ async function uploadReportImages(reportId, files) {
   }
 
   try {
+    const reportBeforeUpload = await getReportById(reportId);
+    const existingDocumentation = reportBeforeUpload?.laporanAwal?.dokumentasi;
+    const existingDocumentationCount = Array.isArray(existingDocumentation)
+      ? existingDocumentation.length
+      : 0;
+
     const images = await Promise.all(validFiles.map(async (file, index) => ({
       name: file.name || `foto-${index + 1}.${(file.type || 'image/jpeg').split('/').pop() || 'jpg'}`,
       type: file.type || 'image/jpeg',
@@ -277,8 +502,18 @@ async function uploadReportImages(reportId, files) {
     });
 
     if (response.type === 'opaque') {
+      const savedReport = await waitForReportPersistence(
+        reportId,
+        existingDocumentationCount + validFiles.length
+      );
+
+      if (!savedReport) {
+        throw new Error('Server belum mengonfirmasi penyimpanan foto. Silakan coba lagi.');
+      }
+
       return {
         accepted: true,
+        verified: true,
         urls: [],
         failed: 0,
         saved: [],
@@ -322,17 +557,46 @@ async function uploadReportImages(reportId, files) {
 }
 
 
-async function saveReports() {
+async function saveReportRecord(report) {
 
-  const saveOperation = saveReportsQueue.then(() => fetchJsonFromGoogleSheet({
-    action: 'syncAll',
-    data: {
-      users,
-      reports
+  const saveOperation = saveReportsQueue.then(async () => {
+    let savedReport;
+
+    try {
+      savedReport = await updateReport(report.id, report);
+    } catch (error) {
+      if (!String(error?.message || '').includes('REPORT_NOT_FOUND')) {
+        throw error;
+      }
     }
-  }));
+
+    if (!savedReport) {
+      savedReport = await waitForReportPersistence(report.id, null, report.updatedAt);
+    }
+
+    if (!savedReport) {
+      savedReport = await createReport(report);
+    }
+
+    if (!savedReport) {
+      savedReport = await waitForReportPersistence(report.id, null, report.updatedAt);
+    }
+
+    const index = reports.findIndex(item => item.id === report.id);
+    if (index !== -1 && savedReport) {
+      reports[index] = savedReport;
+    }
+
+    if (!savedReport) {
+      savedReport = await waitForReportPersistence(report.id);
+      if (!savedReport) {
+        throw new Error('Server belum mengonfirmasi penyimpanan laporan. Silakan coba lagi.');
+      }
+    }
+
+    return savedReport;
+  });
 
   saveReportsQueue = saveOperation.catch(() => {});
-  await saveOperation;
-
+  return saveOperation;
 }

@@ -45,6 +45,45 @@
 
     let toastTimer;
 
+    (function initTopbarScrollBehavior(){
+
+      const topbar =
+        document.querySelector(
+          'header.topbar'
+        );
+
+      if (!topbar) {
+        return;
+      }
+
+      let lastScrollY = window.scrollY;
+
+      window.addEventListener(
+        'scroll',
+        function(){
+
+          const currentScrollY = window.scrollY;
+
+          if (currentScrollY < 24) {
+            topbar.classList.remove('is-hidden');
+            lastScrollY = currentScrollY;
+            return;
+          }
+
+          if (Math.abs(currentScrollY - lastScrollY) < 5) {
+            return;
+          }
+
+          topbar.classList.toggle(
+            'is-hidden',
+            currentScrollY > lastScrollY
+          );
+          lastScrollY = currentScrollY;
+        },
+        { passive:true }
+      );
+    })();
+
     function showToast(
       msg,
       isError = false
@@ -124,6 +163,12 @@
       return message || fallback;
     }
 
+    let activeUploadCount = 0;
+
+    function isUploadInProgress() {
+      return activeUploadCount > 0;
+    }
+
     function showUploadStatus(title, message, isError = false) {
       const status = document.getElementById('upload-status');
       const statusTitle = document.getElementById('upload-status-title');
@@ -135,12 +180,12 @@
       statusTitle.textContent = title || 'Upload sedang berlangsung';
       statusText.textContent = message || 'Laporan sudah tersimpan. Anda dapat melanjutkan pekerjaan lain.';
 
-      const isSuccess = !isError && /berhasil|sukses|selesai|tersimpan/i.test(title || '')
-        || (!isError && /berhasil|sukses|selesai|tersimpan/i.test(message || ''));
+      const isSuccess = !isError && /berhasil|sukses|selesai|dikirim/i.test(title || '');
 
-      statusIcon.textContent = isError ? '!' : '✓';
+      statusIcon.textContent = isError ? '!' : isSuccess ? '✓' : '';
       status.classList.toggle('is-error', isError);
       status.classList.toggle('is-success', !isError && isSuccess);
+      status.classList.toggle('is-loading', !isError && !isSuccess);
       status.classList.add('show');
     }
 

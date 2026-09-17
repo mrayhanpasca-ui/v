@@ -128,6 +128,12 @@ const UNIT_LABELS = {
 };
 
 
+const SYSTEM_REGION = {
+  kabupaten: 'Kabupaten Kotabaru',
+  provinsi: 'Kalimantan Selatan'
+};
+
+
 /* ================= KATEGORI ================= */
 
 const REPORT_CATEGORY = {

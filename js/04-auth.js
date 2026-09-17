@@ -75,6 +75,9 @@ async function login(username, password) {
     if (Array.isArray(response.data.reports)) {
       reports = response.data.reports;
     }
+  } else {
+    users = [];
+    reports = [];
   }
 
   return currentUser;
@@ -306,12 +309,22 @@ function showLoginScreen() {
 
 function handleLogout() {
 
+  if (typeof isUploadInProgress === 'function' && isUploadInProgress()) {
+    showToast('Upload masih berlangsung. Tunggu sampai selesai sebelum keluar akun.', true);
+    return;
+  }
+
   logout();
 
 }
 
 
 async function logout() {
+
+  if (typeof isUploadInProgress === 'function' && isUploadInProgress()) {
+    showToast('Upload masih berlangsung. Tunggu sampai selesai sebelum keluar akun.', true);
+    return;
+  }
 
   const token = localStorage.getItem(SIKOMPAK_TOKEN_KEY) || '';
 
