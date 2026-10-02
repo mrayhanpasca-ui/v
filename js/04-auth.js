@@ -415,6 +415,7 @@ function clearStoredSession() {
   localStorage.removeItem(SIKOMPAK_TOKEN_KEY);
   localStorage.removeItem(SIKOMPAK_USER_KEY);
   localStorage.removeItem(SIKOMPAK_EXPIRES_AT_KEY);
+  clearDashboardDataCache();
 
 }
 

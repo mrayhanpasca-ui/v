@@ -14,15 +14,55 @@ let currentSearch = '';
 let currentStatusFilter = 'semua';
 let currentSort = 'terbaru';
 let currentGroup = 'none';
-let currentAppView = ({
-  '#laporan': 'reports',
-  '#users': 'users',
-  '#audit-log': 'audit'
-})[window.location.hash] || 'dashboard';
+let currentAppView = 'dashboard';
 let dashboardChartReports = [];
 let dashboardSelectedMonth = '';
 let dashboardLeafletMap = null;
 let dashboardLeafletLayer = null;
+
+const DEFAULT_ROUTE = '#/dashboard';
+const REPORT_DETAIL_ROUTE = '#/detail-laporan/';
+const LEGACY_PETUGAS_DETAIL_ROUTE = '#/detail-petugas/';
+const ROUTE_ALIASES = {
+  '#dashboard': '#/dashboard',
+  '#laporan': '#/laporan',
+  '#users': '#/users',
+  '#audit-log': '#/audit-log'
+};
+const ROUTES = {
+  '#/dashboard': {
+    view: 'dashboard',
+    container: 'dashboard-container',
+    render: () => renderDashboardHome()
+  },
+  '#/laporan': {
+    view: 'reports',
+    container: 'dashboard-container',
+    render: () => renderReportsPage()
+  },
+  '#/profil': {
+    view: 'profile',
+    container: 'dashboard-container',
+    render: () => renderProfilePage()
+  },
+  '#/users': {
+    view: 'users',
+    container: 'dashboard-container',
+    allow: () => isSuperadmin(),
+    render: () => renderUserManagement()
+  },
+  '#/audit-log': {
+    view: 'audit',
+    container: 'dashboard-container',
+    allow: () => isSuperadmin(),
+    render: () => renderAuditLog()
+  },
+  [REPORT_DETAIL_ROUTE]: {
+    view: 'report-detail',
+    container: 'dashboard-container',
+    render: params => renderReportDetailPage(params.reportId)
+  }
+};
 
 
 /* =========================================================
@@ -48,57 +88,13 @@ async function showDashboard(forceRefresh = false) {
     return;
   }
 
-  function renderDashboardShell() {
-    if (['users', 'audit'].includes(currentAppView)) {
-      if (isSuperadmin()) {
-        if (currentAppView === 'users') renderUserManagement();
-        else renderAuditLog();
-        return;
-      }
-
-      currentAppView = 'dashboard';
-      history.replaceState({ appView: 'dashboard' }, '', '#dashboard');
-    }
-
-    if (currentAppView === 'reports') {
-      renderReportsPage();
-      return;
-    }
-
-    if (isSuperadmin()) {
-      renderSuperadminDashboard();
-      return;
-    }
-
-    if (isAdmin()) {
-      renderAdminDashboard();
-      return;
-    }
-
-    if (isPetugas()) {
-      renderPetugasDashboard();
-      return;
-    }
-
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="display">
-          Role Tidak Dikenali
-        </div>
-
-        <div>
-          Role akun tidak dikenali oleh sistem.
-        </div>
-      </div>
-    `;
+  if (!forceRefresh && !dashboardDataInitialized) {
+    restoreDashboardDataCache();
   }
 
-  renderDashboardShell();
+  applyView();
 
-  const needsInitialLoad =
-    forceRefresh ||
-    !Array.isArray(users) || users.length === 0 ||
-    !Array.isArray(reports) || reports.length === 0;
+  const needsInitialLoad = forceRefresh || !dashboardDataInitialized;
 
   if (!needsInitialLoad) {
     return;
@@ -119,7 +115,8 @@ async function showDashboard(forceRefresh = false) {
       ]);
     }
 
-    renderDashboardShell();
+    markDashboardDataInitialized();
+    applyView();
   }
   catch (error) {
     const reportListArea =
@@ -634,57 +631,82 @@ function toggleAppSidebar() {
 }
 
 
-function navigateSidebarLink(event, view) {
-  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-  event.preventDefault();
-  setSidebarView(view);
-}
+function applyView() {
+  if (!currentUser) return;
 
+  const requestedHash = ROUTE_ALIASES[window.location.hash] || window.location.hash;
+  let routeHash = requestedHash;
+  let routeParams = {};
+  let route = ROUTES[routeHash];
 
-function setSidebarView(view, fromHistory = false) {
-  if (view === 'profile') {
-    showToast('Profil pengguna sedang aktif di topbar.');
-    return;
+  const detailRoutePrefix = [REPORT_DETAIL_ROUTE, LEGACY_PETUGAS_DETAIL_ROUTE]
+    .find(prefix => requestedHash.startsWith(prefix));
+  if (detailRoutePrefix) {
+    routeParams.reportId = decodeURIComponent(requestedHash.slice(detailRoutePrefix.length));
+    routeHash = REPORT_DETAIL_ROUTE + encodeURIComponent(routeParams.reportId);
+    route = ROUTES[REPORT_DETAIL_ROUTE];
   }
 
-  if (!['dashboard', 'reports', 'users', 'audit'].includes(view)) return;
-  if (['users', 'audit'].includes(view) && !isSuperadmin()) {
-    history.replaceState({ appView: 'dashboard' }, '', '#dashboard');
-    setSidebarView('dashboard', true);
-    showToast('Halaman ini hanya dapat diakses Superadmin.', true);
-    return;
+  if (!route) {
+    routeHash = DEFAULT_ROUTE;
+    route = ROUTES[routeHash];
   }
 
-  currentAppView = view;
-  if (!fromHistory) {
-    const nextHash = ({
-      dashboard: '#dashboard',
-      reports: '#laporan',
-      users: '#users',
-      audit: '#audit-log'
-    })[view];
-    if (window.location.hash !== nextHash) history.pushState({ appView: view }, '', nextHash);
+  if (route.allow && !route.allow()) {
+    showToast(route.view === 'report-detail'
+      ? 'Halaman ini hanya dapat diakses Petugas.'
+      : 'Halaman ini hanya dapat diakses Superadmin.', true);
+    routeHash = DEFAULT_ROUTE;
+    route = ROUTES[routeHash];
   }
+
+  if (window.location.hash !== routeHash) {
+    history.replaceState({ appView: route.view }, '', routeHash);
+  }
+
+  currentAppView = route.view;
+  const routeContainers = new Set(Object.values(ROUTES).map(item => item.container));
+  routeContainers.forEach(containerId => {
+    const element = document.getElementById(containerId);
+    if (element) element.hidden = containerId !== route.container;
+  });
+
   const topbarSearch = document.getElementById('topbar-dashboard-search');
   if (topbarSearch) topbarSearch.value = currentSearch;
 
   const appScreen = document.getElementById('app-screen');
-  appScreen?.classList.toggle('reports-view', view === 'reports');
+  appScreen?.classList.toggle('reports-view', route.view === 'reports');
   appScreen?.classList.remove('sidebar-open');
   document.querySelectorAll('.sidebar-nav-item').forEach(item => {
-    const itemView = item.dataset.appView || (item.textContent.trim().toLowerCase().startsWith('laporan') ? 'reports' : 'dashboard');
-    item.classList.toggle('active', view === itemView);
+    item.classList.toggle('active', item.dataset.appView === route.view || (
+      route.view === 'report-detail' && item.dataset.appView === 'reports'
+    ));
   });
 
-  if (view === 'reports') {
-    renderReportsPage();
-  } else if (view === 'users') {
-    renderUserManagement();
-  } else if (view === 'audit') {
-    renderAuditLog();
-  } else {
-    renderDashboardHome();
+  route.render(routeParams);
+  window.scrollTo({ top: 0 });
+}
+
+
+function setSidebarView(view, routeId = '') {
+  const routeEntry = view === 'report-detail'
+    ? [REPORT_DETAIL_ROUTE, ROUTES[REPORT_DETAIL_ROUTE]]
+    : Object.entries(ROUTES).find(([, route]) => route.view === view);
+  if (!routeEntry) return;
+
+  const [routeKey, route] = routeEntry;
+  const routeHash = view === 'report-detail'
+    ? REPORT_DETAIL_ROUTE + encodeURIComponent(routeId)
+    : routeKey;
+  if (route.allow && !route.allow()) {
+    showToast('Halaman ini tidak dapat diakses role Anda.', true);
+    return;
   }
+
+  if (window.location.hash !== routeHash) {
+    history.pushState({ appView: route.view }, '', routeHash);
+  }
+  applyView();
 }
 
 
@@ -693,11 +715,10 @@ function renderDashboardHome() {
   if (!container || !currentUser) return;
 
   document.getElementById('app-screen')?.classList.remove('reports-view');
-  if (currentAppView === 'users' && isSuperadmin()) renderUserManagement();
-  else if (currentAppView === 'audit' && isSuperadmin()) renderAuditLog();
-  else if (isSuperadmin()) renderSuperadminDashboard();
+  if (isSuperadmin()) renderSuperadminDashboard();
   else if (isAdmin()) renderAdminDashboard();
   else if (isPetugas()) renderPetugasDashboard();
+  else container.innerHTML = '<div class="empty-state"><div class="display">Role Tidak Dikenali</div><div>Role akun tidak dikenali oleh sistem.</div></div>';
 }
 
 
@@ -711,7 +732,7 @@ function renderRecentReportsPanel(sourceReports, petugasMode = false) {
     <section class="reports-panel recent-reports-panel">
       <div class="reports-panel-header">
         <div><h2>Laporan Terbaru</h2><p>${recentReports.length ? `Menampilkan ${recentReports.length} laporan terbaru` : 'Belum ada laporan'}</p></div>
-        <a class="reports-view-link" href="#laporan" onclick="if (!event.ctrlKey && !event.metaKey && event.button === 0) { event.preventDefault(); setSidebarView('reports'); }">Lihat Semua <span aria-hidden="true">→</span></a>
+        <a class="reports-view-link" href="#/laporan">Lihat Semua <span aria-hidden="true">→</span></a>
       </div>
       <div class="report-list recent-report-list">
         ${recentReports.length
@@ -728,9 +749,6 @@ function renderReportsPage() {
   if (!container || !currentUser) return;
 
   document.getElementById('app-screen')?.classList.add('reports-view');
-  document.querySelectorAll('.sidebar-nav-item').forEach(item => {
-    item.classList.toggle('active', item.textContent.trim().toLowerCase().startsWith('laporan'));
-  });
   const reportsForUser = getCurrentDashboardReports();
   const petugasMode = isPetugas();
   const description = petugasMode
@@ -761,15 +779,225 @@ function renderReportsPage() {
 }
 
 
-window.addEventListener('popstate', () => {
-  const view = ({ '#laporan': 'reports', '#users': 'users', '#audit-log': 'audit' })[window.location.hash] || 'dashboard';
-  if (view !== currentAppView) setSidebarView(view, true);
-});
+function renderReportDetailPage(reportId) {
+  const container = document.getElementById('dashboard-container');
+  if (!container || !currentUser) return;
 
-window.addEventListener('hashchange', () => {
-  const view = ({ '#laporan': 'reports', '#users': 'users', '#audit-log': 'audit' })[window.location.hash] || 'dashboard';
-  if (view !== currentAppView) setSidebarView(view, true);
-});
+  const report = getCurrentDashboardReports().find(item => String(item.id) === String(reportId));
+  if (!report) {
+    container.innerHTML = `
+      <section class="dashboard-page">
+        <div class="dashboard-page-header">
+          <div><h1>Laporan tidak ditemukan</h1><p>Laporan ini tidak tersedia atau Anda tidak memiliki akses.</p></div>
+          <button class="btn btn-ghost" type="button" onclick="setSidebarView('reports')">Kembali ke Laporan</button>
+        </div>
+      </section>
+    `;
+    return;
+  }
+
+  const initial = report.laporanAwal || {};
+  const location = initial.lokasi || {};
+  const activities = Array.isArray(report.auditLog)
+    ? report.auditLog.slice().sort((left, right) => String(left.waktu || '').localeCompare(String(right.waktu || '')))
+    : [];
+  const activityLabels = {
+    MEMBUAT_LAPORAN: 'Laporan dibuat',
+    MENGUBAH_DATA: 'Data laporan diperbarui',
+    MENGUBAH_STATUS: 'Status laporan berubah',
+    MEMBUAT_USER: 'Pengguna dibuat',
+    MENGHAPUS_LAPORAN: 'Laporan dihapus'
+  };
+  const date = initial.waktuLaporanMasuk || report.createdAt || report.updatedAt;
+  const dateLabel = date
+    ? formatDeviceDate(date, { day: '2-digit', month: 'long', year: 'numeric' })
+    : '-';
+  const timeLabel = initial.jam || initial.waktu || (date
+    ? formatDeviceDate(date, { hour: '2-digit', minute: '2-digit' })
+    : '-');
+  const description = initial.deskripsiKejadian || initial.deskripsi || initial.keterangan || report.laporanDetail?.kronologi || '';
+  const assignedPetugas = getAssignedPetugasNames(report);
+  const photoMarkup = renderReportDocumentationImages(report) || '<div class="report-photo-empty">Belum ada foto dokumentasi.</div>';
+
+  container.innerHTML = `
+    <section class="dashboard-page report-detail-page">
+      <div class="dashboard-page-header">
+        <div>
+          <div class="report-detail-heading-line">
+            <button class="report-detail-back" type="button" onclick="setSidebarView('reports')" aria-label="Kembali ke laporan" title="Kembali ke laporan">←</button>
+            <h1>${escapeDashboardHtml(report.id || 'Detail Laporan')}</h1>
+            <span class="status-badge ${getDashboardStatusClass(getReportStatus(report))}">${escapeDashboardHtml(getStatusLabelSafe(getReportStatus(report)))}</span>
+            <span class="report-priority-badge">${escapeDashboardHtml(report.prioritas || initial.prioritas || 'Normal')}</span>
+          </div>
+          <p>${escapeDashboardHtml(initial.judul || getReportType(report))}</p>
+        </div>
+        <div class="report-detail-actions">
+          ${isPetugas() ? `<button class="btn btn-submit" type="button" onclick="openPetugasTaskForm('${escapeDashboardAttribute(report.id)}')">Buka Form Pelaksanaan</button>` : ''}
+        </div>
+      </div>
+
+      ${canEditReport() ? '<section id="report-inline-edit" class="reports-panel report-inline-edit"></section>' : ''}
+
+      <section class="reports-panel report-progress-panel">
+        <div class="report-section-title"><span></span><h2>Progress Penanganan</h2></div>
+        ${renderReportProgress(report)}
+      </section>
+
+      <div class="report-detail-layout">
+        <div class="report-detail-main">
+          <section class="reports-panel report-info-panel">
+            <div class="report-section-title"><span></span><h2>Informasi Laporan</h2></div>
+            <div class="report-summary-grid">
+              ${renderReportInfoItem('ID Laporan', report.id, true)}
+              ${renderReportInfoItem('Jenis Kejadian', getReportType(report))}
+              ${renderReportInfoItem('Instansi', getUnitLabel(initial.unit || CATEGORY_CONFIG[initial.jenisLaporan || report.kategori]?.unit) || getReportSector(report))}
+              ${renderReportInfoItem('Tanggal', dateLabel)}
+              ${renderReportInfoItem('Waktu', timeLabel)}
+              ${renderReportInfoItem('Dibuat Oleh', report.createdBy || initial.createdBy || initial.username || '-')}
+            </div>
+          </section>
+
+          <section class="reports-panel report-description-panel">
+            <div class="report-section-title"><span></span><h2>Deskripsi Kejadian</h2></div>
+            <p>${escapeDashboardHtml(description || 'Deskripsi kejadian belum tersedia.')}</p>
+          </section>
+
+          <section class="reports-panel report-location-panel">
+            <div class="report-section-title is-location"><span></span><h2>Lokasi Kejadian</h2></div>
+            <p class="report-location-address">${escapeDashboardHtml(location.alamat || location.inputAsli || 'Lokasi belum diisi')}</p>
+            ${[location.kelurahan, location.kecamatan, location.kabupaten].filter(Boolean).length
+              ? `<p class="report-location-meta">${escapeDashboardHtml([location.kelurahan, location.kecamatan, location.kabupaten].filter(Boolean).join(', '))}</p>`
+              : ''}
+            ${(location.mapsUrl || location.googleMapsUrl)
+              ? `<a class="report-map-link" href="${escapeDashboardAttribute(location.mapsUrl || location.googleMapsUrl)}" target="_blank" rel="noopener noreferrer">Buka Google Maps ↗</a>`
+              : ''}
+          </section>
+
+          <section class="reports-panel report-photos-panel">
+            <div class="report-section-title is-photo"><span></span><h2>Foto Bukti</h2></div>
+            ${photoMarkup}
+          </section>
+        </div>
+
+        <aside class="report-detail-aside">
+          <section class="reports-panel report-status-panel">
+            <div class="report-section-title"><span></span><h2>Status &amp; Penugasan</h2></div>
+            <dl>
+              <div><dt>Status Laporan</dt><dd><span class="status-badge ${getDashboardStatusClass(getReportStatus(report))}">${escapeDashboardHtml(getStatusLabelSafe(getReportStatus(report)))}</span></dd></div>
+              <div><dt>Prioritas</dt><dd><span class="report-priority-badge">${escapeDashboardHtml(report.prioritas || initial.prioritas || 'Normal')}</span></dd></div>
+              <div><dt>Instansi</dt><dd><span class="report-unit-badge">${escapeDashboardHtml(getUnitLabel(initial.unit || CATEGORY_CONFIG[initial.jenisLaporan || report.kategori]?.unit) || getReportSector(report))}</span></dd></div>
+              ${assignedPetugas !== 'Belum ditugaskan' ? `<div><dt>Petugas</dt><dd>${escapeDashboardHtml(assignedPetugas)}</dd></div>` : '<div><dt>Petugas</dt><dd>Belum ditugaskan</dd></div>'}
+            </dl>
+          </section>
+
+          <section class="reports-panel report-timeline-panel">
+            <div class="report-section-title"><span></span><h2>Timeline Aktivitas</h2></div>
+            ${activities.length
+              ? `<div class="report-timeline">${activities.map((activity, index) => `
+                <div class="report-timeline-item ${index === activities.length - 1 ? 'is-current' : 'is-complete'}">
+                  <span class="report-timeline-marker">${index === activities.length - 1 ? index + 1 : '✓'}</span>
+                  <div><time>${escapeDashboardHtml(formatDeviceDate(activity.waktu, { hour: '2-digit', minute: '2-digit' }))}</time><p>${escapeDashboardHtml(activityLabels[activity.action] || activity.action || 'Aktivitas laporan')}</p><small>oleh ${escapeDashboardHtml(activity.username || '-')}</small></div>
+                </div>`).join('')}</div>`
+              : '<p class="report-timeline-empty">Belum ada aktivitas tambahan.</p>'}
+          </section>
+        </aside>
+      </div>
+    </section>
+  `;
+
+  if (canEditReport()) renderAdminReportEditor(report);
+}
+
+
+function renderReportInfoItem(label, value, monospace = false) {
+  return `<div class="report-info-item"><dt>${escapeDashboardHtml(label)}</dt><dd class="${monospace ? 'is-monospace' : ''}">${escapeDashboardHtml(value || '-')}</dd></div>`;
+}
+
+
+function renderReportDocumentationImages(report) {
+  const initial = report?.laporanAwal || {};
+  const implementation = report?.pelaksanaan || {};
+  const documentation = [
+    ...(Array.isArray(initial.dokumentasi) ? initial.dokumentasi : []),
+    ...(Array.isArray(implementation.dokumentasi) ? implementation.dokumentasi : []),
+    ...(Array.isArray(report?.data?.dokumentasi) ? report.data.dokumentasi : [])
+  ];
+  const images = documentation.map(image => {
+    if (!image) return null;
+    const source = typeof image === 'string'
+      ? image
+      : image.url || image.dataUrl || image.imageUrl || image.src || '';
+    const src = normalizeDocumentImageUrl(source);
+    const href = getDocumentOpenUrl(source);
+    return src && href ? { src, href } : null;
+  }).filter(Boolean).filter((image, index, allImages) =>
+    allImages.findIndex(item => item.src === image.src) === index
+  );
+
+  if (!images.length) return '';
+
+  return `<div class="documentation-grid report-detail-photo-gallery">${images.map(image => `
+    <a class="documentation-item" href="${escapeDashboardAttribute(image.href)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">
+      <img src="${escapeDashboardAttribute(image.src)}" alt="Dokumentasi laporan" loading="lazy"
+        data-fallback-urls="${escapeDashboardAttribute([
+          image.src,
+          image.src.replace('https://lh3.googleusercontent.com/d/', 'https://drive.google.com/uc?export=view&id=').replace(/=w1200$/, ''),
+          image.src.replace(/^https:\/\/lh3\.googleusercontent\.com\/d\/([^=]+)=w1200$/, 'https://drive.google.com/thumbnail?id=$1&sz=w1200')
+        ].join('|'))}"
+        onerror="if (this.dataset.fallbackUrls) { const urls = this.dataset.fallbackUrls.split('|'); urls.shift(); this.dataset.fallbackUrls = urls.join('|'); if (urls[0]) { this.src = urls[0]; } else { this.style.display='none'; this.parentElement.classList.add('media-error'); } }">
+    </a>`).join('')}</div>`;
+}
+
+
+function renderReportProgress(report) {
+  const steps = [
+    'Laporan Dibuat',
+    'Menunggu Penugasan',
+    'Diproses',
+    'Selesai Penanganan',
+    'Menunggu Laporan Detail',
+    'Selesai'
+  ];
+  const status = getReportStatus(report);
+  const activeStepByStatus = {
+    [REPORT_STATUS.DRAFT]: 0,
+    [REPORT_STATUS.MENUNGGU_PENUGASAN]: 1,
+    [REPORT_STATUS.MENUNGGU_KONFIRMASI]: 1,
+    [REPORT_STATUS.DIPROSES]: 2,
+    [REPORT_STATUS.SELESAI_PENANGANAN]: 3,
+    [REPORT_STATUS.MENUNGGU_LAPORAN_DETAIL]: 4,
+    [REPORT_STATUS.SELESAI]: 5,
+    [REPORT_STATUS.DIARSIPKAN]: 5
+  };
+  const activeStep = activeStepByStatus[status] ?? 0;
+
+  return `<ol class="report-progress-steps" aria-label="Tahapan penanganan laporan">${steps.map((step, index) => `
+    <li class="${index < activeStep ? 'is-complete' : index === activeStep ? 'is-current' : ''}">
+      <span class="report-progress-marker">${index < activeStep ? '✓' : index + 1}</span>
+      <span class="report-progress-label">${escapeDashboardHtml(step)}</span>
+    </li>`).join('')}
+  </ol>`;
+}
+
+
+function renderProfilePage() {
+  const container = document.getElementById('dashboard-container');
+  if (!container || !currentUser) return;
+
+  container.innerHTML = `
+    <section class="dashboard-page">
+      ${renderDashboardPageHeader('Profil', 'Informasi akun Anda')}
+      <section class="reports-panel">
+        <p><strong>Nama:</strong> ${escapeDashboardHtml(currentUser.nama || '-')}</p>
+        <p><strong>Username:</strong> ${escapeDashboardHtml(currentUser.username || '-')}</p>
+        <p><strong>Role:</strong> ${escapeDashboardHtml(currentUser.role || '-')}</p>
+      </section>
+    </section>
+  `;
+}
+
+
+window.addEventListener('hashchange', applyView);
 
 
 /* =========================================================
@@ -1613,7 +1841,7 @@ function renderDashboardCard(
 
     <div
       class="report-card ${sectorClass}"
-      onclick="toggleDashboardDetail(
+      onclick="openReportDetail(
         '${escapeDashboardAttribute(reportId)}',
         event
       )"
@@ -2526,13 +2754,9 @@ function renderDashboardActions(
     return `
 
       <button
+        type="button"
         class="action-main"
-        onclick="
-          openPetugasTask(
-            '${escapeDashboardAttribute(id)}',
-            event
-          )
-        "
+        onclick="openReportDetail('${escapeDashboardAttribute(id)}', event)"
       >
         Buka Tugas
       </button>
@@ -3003,6 +3227,20 @@ function openAuditLog() {
    ADMIN REPORT
 ========================================================= */
 
+function openReportDetail(id, event) {
+  if (event) event.stopPropagation();
+
+  const report = getCurrentDashboardReports()
+    .find(item => String(item.id) === String(id));
+  if (!report) {
+    showDashboardToast('Laporan tidak ditemukan atau Anda tidak memiliki akses.');
+    return;
+  }
+
+  setSidebarView('report-detail', id);
+}
+
+
 async function openAdminReport(
   id,
   event
@@ -3028,18 +3266,6 @@ async function openAdminReport(
     return;
 
   }
-
-  const detailedReport = await getReportById(id);
-
-  if (detailedReport) {
-    const index = reports.findIndex(item => item.id === id);
-    report = detailedReport;
-
-    if (index !== -1) {
-      reports[index] = detailedReport;
-    }
-  }
-
 
   if (
     typeof editReport ===

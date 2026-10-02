@@ -13,10 +13,89 @@ let saveReportsQueue = Promise.resolve();
 const SIKOMPAK_TOKEN_KEY = 'sikompaKToken';
 const SIKOMPAK_USER_KEY = 'sikompaKUser';
 const SIKOMPAK_EXPIRES_AT_KEY = 'sikompaKExpiresAt';
+const SIKOMPAK_DASHBOARD_CACHE_KEY = 'sikompaKDashboardCache';
 const API_REQUEST_TIMEOUT_MS = 180000;
 const API_REQUEST_RETRY_COUNT = 2;
 const API_REQUEST_RETRY_DELAY_MS = 1500;
 let activeDatabaseRequestCount = 0;
+let dashboardDataInitialized = false;
+
+
+function getDashboardDataSessionKey() {
+  if (!currentUser) return '';
+
+  const expiresAt = localStorage.getItem(SIKOMPAK_EXPIRES_AT_KEY) || '';
+  if (!expiresAt || Date.now() >= new Date(expiresAt).getTime()) return '';
+
+  return [
+    currentUser.id || currentUser.username || '',
+    normalizeRoleName(currentUser.role),
+    expiresAt
+  ].join(':');
+}
+
+
+function saveDashboardDataCache() {
+  const sessionKey = getDashboardDataSessionKey();
+  if (!dashboardDataInitialized || !sessionKey) return;
+
+  const safeUsers = users.map(user => {
+    const { password, ...safeUser } = user;
+    return safeUser;
+  });
+
+  try {
+    localStorage.setItem(SIKOMPAK_DASHBOARD_CACHE_KEY, JSON.stringify({
+      sessionKey,
+      users: safeUsers,
+      reports,
+      masterWilayah
+    }));
+  }
+  catch (error) {
+    console.warn('Cache data dashboard tidak dapat disimpan:', error);
+  }
+}
+
+
+function restoreDashboardDataCache() {
+  if (dashboardDataInitialized) return true;
+
+  const sessionKey = getDashboardDataSessionKey();
+  if (!sessionKey) return false;
+
+  try {
+    const cache = JSON.parse(localStorage.getItem(SIKOMPAK_DASHBOARD_CACHE_KEY) || 'null');
+    if (
+      !cache ||
+      cache.sessionKey !== sessionKey ||
+      !Array.isArray(cache.users) ||
+      !Array.isArray(cache.reports)
+    ) return false;
+
+    users = cache.users.map(normalizeUserRole);
+    reports = cache.reports;
+    masterWilayah = Array.isArray(cache.masterWilayah) ? cache.masterWilayah : [];
+    dashboardDataInitialized = true;
+    return true;
+  }
+  catch (error) {
+    localStorage.removeItem(SIKOMPAK_DASHBOARD_CACHE_KEY);
+    return false;
+  }
+}
+
+
+function markDashboardDataInitialized() {
+  dashboardDataInitialized = true;
+  saveDashboardDataCache();
+}
+
+
+function clearDashboardDataCache() {
+  dashboardDataInitialized = false;
+  localStorage.removeItem(SIKOMPAK_DASHBOARD_CACHE_KEY);
+}
 
 
 function isDatabaseRequestInProgress() {
@@ -284,6 +363,7 @@ async function saveUserRecord(user) {
     users[index] = nextUser;
   }
 
+  saveDashboardDataCache();
   return savedUser;
 }
 
@@ -342,6 +422,7 @@ async function loadDashboardData() {
   users = data.users.map(normalizeUserRole);
   reports = dashboardReports;
   masterWilayah = Array.isArray(data.masterWilayah) ? data.masterWilayah : [];
+  markDashboardDataInitialized();
   console.log('MasterWilayah:', masterWilayah);
   console.log('Jumlah MasterWilayah:', masterWilayah.length);
 
@@ -639,6 +720,7 @@ async function saveReportRecord(report) {
       }
     }
 
+    saveDashboardDataCache();
     return savedReport;
   });
 

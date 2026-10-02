@@ -444,24 +444,42 @@ function openAdminReport(id, event) {
     return;
   }
 
-  const report = reports.find(item => item.id === id);
+  const report = reports.find(item => String(item.id) === String(id));
   if (!report) {
     showToast('Laporan tidak ditemukan.', true);
     return;
   }
 
+  const detailRoute = REPORT_DETAIL_ROUTE + encodeURIComponent(report.id);
+  if (window.location.hash !== detailRoute) setSidebarView('report-detail', report.id);
+  renderAdminReportEditor(report, true);
+}
+
+
+function renderAdminReportEditor(report, scrollToEditor = false) {
+  if (!canEditReport()) return;
+
+  const inlineEditor = document.getElementById('report-inline-edit');
+  if (!inlineEditor) return;
+
   const awal = report.laporanAwal || {};
   const detail = report.laporanDetail || {};
   const lokasi = awal.lokasi || {};
-  const overlay = document.getElementById('modal-overlay');
-  overlay.querySelector('.modal-head h2').textContent = 'Kelola Laporan ' + report.id;
-  overlay.querySelector('.cat-tabs').innerHTML = '';
-  overlay.querySelector('.form-grid').innerHTML = adminEditForm(report, lokasi, detail);
-  overlay.querySelector('.modal-footer').innerHTML = `
-    <button class="btn btn-ghost" onclick="closeModal()">Batal</button>
-    <button class="btn btn-submit" onclick="saveAdminReport('${escapeDashboardAttribute(id)}')">Simpan Perubahan</button>
+  inlineEditor.innerHTML = `
+    <div class="report-inline-edit-header">
+      <div><h2>Kelola Laporan</h2><p>${escapeDashboardHtml(report.id)}</p></div>
+    </div>
+    <div class="form-grid">${adminEditForm(report, lokasi, detail)}</div>
+    <div class="report-inline-edit-footer">
+      <button class="btn btn-ghost" type="button" onclick="cancelAdminReportEdit()">Batal</button>
+      <button class="btn btn-submit" type="button" onclick="saveAdminReport('${escapeDashboardAttribute(report.id)}')">Simpan Perubahan</button>
+    </div>
   `;
-  overlay.classList.add('open');
+  if (scrollToEditor) inlineEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelAdminReportEdit() {
+  if (currentAppView === 'report-detail') applyView();
 }
 
 function adminEditForm(report, lokasi, detail) {
@@ -625,7 +643,6 @@ async function saveAdminReport(id) {
   }
   appendChangedFields(report, before);
   report.updatedAt = getCurrentDateTime();
-  closeModal();
   showDashboard();
   showToast('Perubahan sedang disimpan ke database...');
   saveReportAndUploadInBackground(report, selectedImageFiles);
@@ -638,21 +655,26 @@ async function openPetugasTask(id, event) {
     return;
   }
 
-  let report = getMyPetugasReports().find(item => item.id === id);
+  const report = getMyPetugasReports().find(item => item.id === id);
   if (!report) {
     showToast('Tugas tidak ditemukan.', true);
     return;
   }
 
-  const detailedReport = await getReportById(id);
+  setSidebarView('report-detail', id);
+}
 
-  if (detailedReport) {
-    const index = reports.findIndex(item => item.id === id);
-    report = detailedReport;
 
-    if (index !== -1) {
-      reports[index] = detailedReport;
-    }
+function openPetugasTaskForm(id) {
+  if (!isPetugas()) {
+    showToast('Menu ini hanya untuk Petugas.', true);
+    return;
+  }
+
+  const report = getMyPetugasReports().find(item => item.id === id);
+  if (!report) {
+    showToast('Tugas tidak ditemukan.', true);
+    return;
   }
 
   const awal = report.laporanAwal || {};
@@ -1012,6 +1034,7 @@ async function deleteSuperadminReport(id, event) {
   }, null);
   await deleteReport(id);
   reports = reports.filter(item => item.id !== id);
+  saveDashboardDataCache();
   showDashboard();
   showToast('Laporan berhasil dihapus.');
 }
