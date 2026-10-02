@@ -186,6 +186,13 @@ function updateUserHeader() {
 
   }
 
+  const sidebarUser = document.getElementById('sidebar-user-label');
+  if (sidebarUser) {
+    sidebarUser.textContent = currentUser.role
+      ? `${username} · ${currentUser.role}`
+      : username;
+  }
+
 }
 
 
@@ -314,8 +321,41 @@ function handleLogout() {
     return;
   }
 
+  if (typeof isDatabaseRequestInProgress === 'function' && isDatabaseRequestInProgress()) {
+    showToast('Database masih memproses data. Tunggu sampai selesai sebelum keluar akun.', true);
+    return;
+  }
+
   logout();
 
+}
+
+
+function openLogoutConfirmation() {
+  if (typeof isDatabaseRequestInProgress === 'function' && isDatabaseRequestInProgress()) {
+    showToast('Database masih memproses data. Tunggu sampai selesai sebelum keluar akun.', true);
+    return;
+  }
+
+  const overlay = document.getElementById('logout-confirmation-overlay');
+  if (overlay) overlay.classList.add('open');
+}
+
+
+function closeLogoutConfirmation() {
+  const overlay = document.getElementById('logout-confirmation-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+
+function confirmLogout() {
+  if (typeof isDatabaseRequestInProgress === 'function' && isDatabaseRequestInProgress()) {
+    showToast('Database masih memproses data. Tunggu sampai selesai sebelum keluar akun.', true);
+    return;
+  }
+
+  closeLogoutConfirmation();
+  handleLogout();
 }
 
 

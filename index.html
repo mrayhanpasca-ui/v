@@ -75,13 +75,8 @@
 
 
       <h1>
-
-        SIKOMPAK<br>
-
-        <span class="b">
-          Satpol PP & Damkar
-        </span>
-
+        <img class="login-brand-logo" src="b7879c7f-dc75-44df-a304-e9762936128c.png" alt="SIKOMPAK">
+        <span class="b">Satpol PP &amp; Damkar</span>
       </h1>
 
 
@@ -102,7 +97,7 @@
 
           <span
             class="dot"
-            style="background:#7FA3E0"
+            style="background:#315A91"
           ></span>
 
           Pengendalian & Penegakan
@@ -114,7 +109,7 @@
 
           <span
             class="dot"
-            style="background:#F0937C"
+            style="background:#E12D24"
           ></span>
 
           Pemadaman & Penyelamatan
@@ -279,12 +274,32 @@
 
   <div id="app-screen" inert>
 
+    <aside class="app-sidebar" aria-label="Navigasi utama">
+      <div class="sidebar-brand">
+        <img class="sidebar-brand-logo" src="logo only.png" alt="Logo jabat tangan SIKOMPAK">
+        <button class="sidebar-toggle" type="button" onclick="toggleAppSidebar()" aria-label="Tutup menu">×</button>
+      </div>
 
-    <!-- ===================================================
-         TOPBAR
-    ==================================================== -->
+      <div class="sidebar-user" id="sidebar-user-label">Admin</div>
+      <div class="sidebar-section-label">Menu Utama</div>
+      <nav class="sidebar-nav">
+        <button class="sidebar-nav-item active" type="button" onclick="setSidebarView('dashboard')"><span>▦</span>Dashboard</button>
+        <button class="sidebar-nav-item" type="button" onclick="setSidebarView('reports')"><span>▤</span>Laporan</button>
+        <button class="sidebar-nav-item" type="button" onclick="setSidebarView('profile')"><span>○</span>Profil</button>
+      </nav>
+      <button class="sidebar-logout" type="button" onclick="openLogoutConfirmation()"><span aria-hidden="true">↪</span><span class="sidebar-logout-label">Keluar</span></button>
+    </aside>
 
-    <header class="topbar">
+    <div class="app-main-shell">
+      <!-- ===================================================
+           TOPBAR
+      ==================================================== -->
+
+      <header class="topbar">
+        <div class="topbar-brand" id="topbar-page-title">
+          <button class="mobile-menu-toggle" type="button" onclick="toggleAppSidebar()" aria-label="Buka menu">☰</button>
+          <img class="topbar-page-logo" src="b7879c7f-dc75-44df-a304-e9762936128c.png" alt="SIKOMPAK">
+        </div>
 
 
       <!-- ================= BRAND ================= -->
@@ -342,6 +357,13 @@
 
       <div class="topbar-right">
 
+        <label class="topbar-search">
+          <span aria-hidden="true">⌕</span>
+          <input type="search" id="topbar-dashboard-search" placeholder="Cari laporan..." oninput="setDashboardSearch(this.value)">
+        </label>
+
+        <button class="topbar-icon-button" type="button" aria-label="Notifikasi" onclick="showToast('Notifikasi laporan tersedia di dashboard.')">♧</button>
+
 
         <div class="admin-chip">
 
@@ -362,20 +384,10 @@
         </div>
 
 
-        <button
-          class="logout-btn"
-          onclick="handleLogout()"
-        >
-
-          Keluar
-
-        </button>
-
-
       </div>
 
 
-    </header>
+      </header>
 
 
 
@@ -383,7 +395,7 @@
          MAIN DASHBOARD
     ==================================================== -->
 
-    <main>
+      <main>
 
 
       <!--
@@ -399,10 +411,22 @@
 
       <div
         id="dashboard-container"
-      ></div>
+      >
+      </div>
 
+      <div class="logout-confirmation-overlay" id="logout-confirmation-overlay" role="dialog" aria-modal="true" aria-labelledby="logout-confirmation-title">
+        <div class="logout-confirmation-card">
+          <div class="logout-confirmation-icon" aria-hidden="true">↪</div>
+          <h2 id="logout-confirmation-title">Keluar dari akun?</h2>
+          <p>Sesi Anda akan diakhiri dan kembali ke halaman login.</p>
+          <div class="logout-confirmation-actions">
+            <button type="button" class="btn btn-ghost" onclick="closeLogoutConfirmation()">Batal</button>
+            <button type="button" class="btn btn-submit" onclick="confirmLogout()">Ya, Keluar</button>
+          </div>
+        </div>
+      </div>
 
-    </main>
+      <!-- =====================================================
 
 
 
@@ -410,13 +434,15 @@
          FOOTER
     ==================================================== -->
 
-    <footer class="foot">
+      <footer class="foot">
 
       SIKOMPAK v1.0
 
-    </footer>
+      </footer>
 
+    </div>
 
+    <div class="sidebar-backdrop" onclick="toggleAppSidebar()"></div>
   </div>
 
 
@@ -525,19 +551,20 @@
       id="upload-status"
       role="status"
       aria-live="polite"
+      onclick="toggleUploadStatusDetails()"
     >
 
     <div class="upload-status-icon" id="upload-status-icon" aria-hidden="true"></div>
 
     <div class="upload-status-content">
       <strong id="upload-status-title">Upload sedang berlangsung</strong>
-      <span id="upload-status-text">Laporan sudah tersimpan. Anda dapat melanjutkan pekerjaan lain.</span>
+      <span class="upload-status-text" id="upload-status-text">Laporan sudah tersimpan. Anda dapat melanjutkan pekerjaan lain.</span>
     </div>
 
     <button
       type="button"
       class="upload-status-close"
-      onclick="hideUploadStatus()"
+      onclick="event.stopPropagation(); hideUploadStatus()"
       title="Tutup notifikasi"
       aria-label="Tutup notifikasi"
     >

@@ -16,6 +16,12 @@ const SIKOMPAK_EXPIRES_AT_KEY = 'sikompaKExpiresAt';
 const API_REQUEST_TIMEOUT_MS = 180000;
 const API_REQUEST_RETRY_COUNT = 2;
 const API_REQUEST_RETRY_DELAY_MS = 1500;
+let activeDatabaseRequestCount = 0;
+
+
+function isDatabaseRequestInProgress() {
+  return activeDatabaseRequestCount > 0;
+}
 
 
 function cloneData(data) {
@@ -46,6 +52,18 @@ function getApiErrorMessage(error, fallback = 'Response Apps Script gagal.') {
 
 
 async function fetchJsonFromGoogleSheet(payload = {}) {
+  activeDatabaseRequestCount += 1;
+
+  try {
+    return await fetchGoogleSheetRequest(payload);
+  }
+  finally {
+    activeDatabaseRequestCount = Math.max(0, activeDatabaseRequestCount - 1);
+  }
+}
+
+
+async function fetchGoogleSheetRequest(payload = {}) {
 
   if (!GOOGLE_SHEET_WEB_APP_URL) {
     throw new Error('URL Apps Script belum diatur.');
@@ -303,8 +321,26 @@ async function loadDashboardData() {
     throw new Error('Data dashboard tidak tersedia di database.');
   }
 
+  let dashboardReports = data.reports;
+  const reportsAreSummaries = dashboardReports.some(report =>
+    !report.laporanDetail ||
+    (!Array.isArray(report.laporanAwal?.dokumentasi) &&
+      !Array.isArray(report.pelaksanaan?.dokumentasi))
+  );
+
+  if (dashboardReports.length > 0 && reportsAreSummaries) {
+    const detailedResponse = await fetchJsonFromGoogleSheet({
+      action: 'getReports',
+      data: { includeDetails: true }
+    });
+
+    if (Array.isArray(detailedResponse.reports)) {
+      dashboardReports = detailedResponse.reports;
+    }
+  }
+
   users = data.users.map(normalizeUserRole);
-  reports = data.reports;
+  reports = dashboardReports;
   masterWilayah = Array.isArray(data.masterWilayah) ? data.masterWilayah : [];
   console.log('MasterWilayah:', masterWilayah);
   console.log('Jumlah MasterWilayah:', masterWilayah.length);
@@ -511,12 +547,21 @@ async function uploadReportImages(reportId, files) {
         throw new Error('Server belum mengonfirmasi penyimpanan foto. Silakan coba lagi.');
       }
 
+      const verifiedUrls = [
+        ...(Array.isArray(savedReport.laporanAwal?.dokumentasi) ? savedReport.laporanAwal.dokumentasi : []),
+        ...(Array.isArray(savedReport.pelaksanaan?.dokumentasi) ? savedReport.pelaksanaan.dokumentasi : [])
+      ]
+        .map(image => typeof image === 'string'
+          ? image
+          : image?.url || image?.imageUrl || image?.src || image?.dataUrl || '')
+        .filter(Boolean);
+
       return {
         accepted: true,
         verified: true,
-        urls: [],
+        urls: [...new Set(verifiedUrls)],
         failed: 0,
-        saved: [],
+        saved: [...new Set(verifiedUrls)].map(url => ({ url })),
         errors: [],
         persistenceErrors: []
       };

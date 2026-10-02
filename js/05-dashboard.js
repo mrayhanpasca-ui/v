@@ -256,6 +256,112 @@ function getMyPetugasReports() {
 }
 
 
+function formatDashboardToday() {
+  return new Intl.DateTimeFormat('id-ID', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  }).format(new Date());
+}
+
+
+function renderDashboardPageHeader(title, description, canCreate = false) {
+  return `
+    <div class="dashboard-page-header">
+      <div>
+        <div class="dashboard-kicker">SIKOMPAK / ${escapeDashboardHtml(currentUser?.role || 'USER')}</div>
+        <h1>${escapeDashboardHtml(title)}</h1>
+        <p>${escapeDashboardHtml(formatDashboardToday())} · ${escapeDashboardHtml(description)}</p>
+      </div>
+      ${canCreate ? `<button class="btn btn-add dashboard-primary-action" onclick="openModal()"><span aria-hidden="true">＋</span> Buat Laporan Baru</button>` : ''}
+    </div>
+  `;
+}
+
+
+function renderDashboardAlert(data, petugasMode = false) {
+  const pendingReports = data.filter(report => getReportStatus(report) === REPORT_STATUS.MENUNGGU_LAPORAN_DETAIL);
+  const target = pendingReports[0];
+  if (!target) return '';
+  const action = petugasMode
+    ? `openPetugasTask('${escapeDashboardAttribute(target.id)}', event)`
+    : `openAdminReport('${escapeDashboardAttribute(target.id)}', event)`;
+  return `
+    <div class="dashboard-alert">
+      <span class="dashboard-alert-icon" aria-hidden="true">!</span>
+      <div><strong>${formatNumber(pendingReports.length)} laporan menunggu laporan detail</strong><span>Petugas telah selesai. Lengkapi laporan detail untuk menutup kasus.</span></div>
+      <button type="button" onclick="${action}">Lengkapi <span aria-hidden="true">→</span></button>
+    </div>
+  `;
+}
+
+
+function renderDashboardMonitoring(data) {
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+    return { date, key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`, label: date.toLocaleDateString('id-ID', { month: 'short' }) };
+  });
+  const totals = months.map(month => data.filter(report => String(report.createdAt || '').slice(0, 7) === month.key).length);
+  const completed = months.map(month => data.filter(report => {
+    const dateMatches = String(report.updatedAt || report.createdAt || '').slice(0, 7) === month.key;
+    const status = getReportStatus(report);
+    return dateMatches && (status === REPORT_STATUS.SELESAI || status === REPORT_STATUS.SELESAI_PENANGANAN);
+  }).length);
+  const max = Math.max(...totals, ...completed, 1);
+  const chartWidth = 720;
+  const chartHeight = 190;
+  const point = values => values.map((value, index) => `${(index / (values.length - 1)) * chartWidth},${chartHeight - (value / max) * 145 - 12}`).join(' ');
+  const hasData = totals.some(Boolean) || completed.some(Boolean);
+
+  return `
+    <section class="monitoring-card">
+      <div class="monitoring-card-header"><div><h2>Tren Laporan Bulanan</h2><p>Laporan masuk vs diselesaikan</p></div><span class="monitoring-period">6 bulan terakhir</span></div>
+      ${hasData ? `<div class="trend-chart-wrap"><svg class="trend-chart" viewBox="0 0 ${chartWidth} ${chartHeight}" preserveAspectRatio="none" role="img" aria-label="Tren laporan bulanan">
+        ${[0, 1, 2, 3, 4].map(step => `<line x1="0" y1="${chartHeight - 12 - step * 36}" x2="${chartWidth}" y2="${chartHeight - 12 - step * 36}" />`).join('')}
+        <polyline class="trend-total" points="${point(totals)}" />
+        <polyline class="trend-completed" points="${point(completed)}" />
+        ${totals.map((value, index) => `<circle class="trend-total-dot" cx="${(index / (totals.length - 1)) * chartWidth}" cy="${chartHeight - (value / max) * 145 - 12}" r="3" />`).join('')}
+        ${completed.map((value, index) => `<circle class="trend-completed-dot" cx="${(index / (completed.length - 1)) * chartWidth}" cy="${chartHeight - (value / max) * 145 - 12}" r="3" />`).join('')}
+      </svg><div class="trend-labels">${months.map(month => `<span>${month.label}</span>`).join('')}</div></div>` : `<div class="monitoring-empty">Belum ada data tren untuk ditampilkan.</div>`}
+      <div class="trend-legend"><span><i class="legend-total"></i>Total Laporan</span><span><i class="legend-completed"></i>Selesai</span></div>
+    </section>
+  `;
+}
+
+
+function renderReportsPanelStart() {
+  return `<section class="reports-panel"><div class="reports-panel-header"><div><h2>Laporan Terbaru</h2><p>Laporan yang memerlukan perhatian</p></div><button type="button" onclick="setDashboardSort('terbaru')">Lihat Semua <span aria-hidden="true">→</span></button></div>`;
+}
+
+
+function renderReportsPanelEnd() {
+  return '</section>';
+}
+
+
+function toggleAppSidebar() {
+  const appScreen = document.getElementById('app-screen');
+  if (!appScreen) return;
+
+  if (window.matchMedia('(max-width: 760px)').matches) {
+    appScreen.classList.toggle('sidebar-open');
+    return;
+  }
+
+  appScreen.classList.toggle('sidebar-collapsed');
+}
+
+
+function setSidebarView(view) {
+  document.querySelectorAll('.sidebar-nav-item').forEach(item => item.classList.toggle('active', item.textContent.trim().toLowerCase().startsWith(view === 'reports' ? 'laporan' : view)));
+  if (view === 'reports') document.getElementById('report-list-area')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (view === 'profile') showToast('Profil pengguna sedang aktif di topbar.');
+  document.getElementById('app-screen')?.classList.remove('sidebar-open');
+}
+
+
 /* =========================================================
    STATISTIK UMUM
 ========================================================= */
@@ -639,6 +745,9 @@ function setDashboardSearch(
     String(value || '')
       .trim()
       .toLowerCase();
+
+  const topbarSearch = document.getElementById('topbar-dashboard-search');
+  if (topbarSearch && topbarSearch.value !== currentSearch) topbarSearch.value = currentSearch;
 
   refreshDashboardList();
 
@@ -1889,8 +1998,13 @@ function renderDashboardDetail(
   }
 
 
-  const documentationImages = Array.isArray(pelaksanaan.dokumentasi)
-    ? pelaksanaan.dokumentasi
+  const reportDocumentation = [
+    ...(Array.isArray(awal.dokumentasi) ? awal.dokumentasi : []),
+    ...(Array.isArray(pelaksanaan.dokumentasi) ? pelaksanaan.dokumentasi : []),
+    ...(Array.isArray(report?.data?.dokumentasi) ? report.data.dokumentasi : [])
+  ];
+
+  const documentationImages = reportDocumentation
         .map(function (image) {
           if (!image) return null;
           if (typeof image === 'string') {
@@ -1907,7 +2021,9 @@ function renderDashboardDetail(
           return null;
         })
         .filter(Boolean)
-    : [];
+        .filter((image, index, images) =>
+          images.findIndex(item => item.src === image.src) === index
+        );
 
   if (documentationImages.length) {
 
@@ -2083,13 +2199,7 @@ function toggleDashboardDetail(
     );
 
 
-  if (detail) {
-
-    detail.classList.toggle(
-      'open'
-    );
-
-  }
+  if (detail) detail.classList.toggle('open');
 
 }
 
@@ -2496,7 +2606,6 @@ async function openAdminReport(
       item =>
         item.id === id
     );
-
 
   if (!report) {
 

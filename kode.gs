@@ -91,7 +91,7 @@ const SESSION_HEADERS = [
 ];
 
 const SESSION_DURATION_MS = 2 * 60 * 60 * 1000;
-const DATA_CACHE_KEY = 'sikompaK_data_v2';
+const DATA_CACHE_KEY = 'sikompaK_data_v3';
 
 
 // =========================================================
@@ -2582,7 +2582,9 @@ function getDataFromSheet() {
       ),
 
     reports:
-      getReports(),
+      getReportsFromSheet().filter(function (report) {
+        return !report.deleted;
+      }),
 
     masterWilayah:
       getMasterWilayah()
@@ -2598,7 +2600,9 @@ function getDataForContext(context) {
   if (actor.role === 'PETUGAS') {
     return {
       users: getUsers(),
-      reports: getReports({}, context),
+      reports: getReportsFromSheet().filter(function (report) {
+        return !report.deleted && canAccessReport(report, context);
+      }),
       masterWilayah: getMasterWilayah()
     };
   }

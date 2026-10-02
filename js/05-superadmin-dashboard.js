@@ -16,40 +16,14 @@ function renderSuperadminDashboard() {
   container.innerHTML = `
 
     <section class="dashboard-page">
-
-      <div class="dashboard-heading">
-
-        <div>
-
-          <div class="eyebrow">
-            SUPERADMIN
-          </div>
-
-          <h2>
-            Dashboard Sistem
-          </h2>
-
-          <p>
-            Pantau seluruh laporan,
-            pengguna, dan aktivitas sistem.
-          </p>
-
-        </div>
-
-        <div class="role-badge superadmin-badge">
-          SUPERADMIN
-        </div>
-
-      </div>
-
+      ${renderDashboardPageHeader('Dashboard Sistem', 'Pemantauan laporan dan aktivitas sistem', true)}
+      ${renderDashboardAlert(allReports)}
       ${renderOverviewStats(allReports)}
-
+      ${renderDashboardMonitoring(allReports)}
+      ${renderReportsPanelStart()}
       <div class="dashboard-toolbar">
-
         ${renderSearchFilter()}
-
         <div class="dashboard-actions">
-
           <button
             class="btn btn-add"
             onclick="openModal()"
@@ -58,11 +32,9 @@ function renderSuperadminDashboard() {
           </button>
 
         </div>
-
       </div>
-
       <div id="report-list-area"></div>
-
+      ${renderReportsPanelEnd()}
       <div class="superadmin-tools">
 
         <div class="management-card">

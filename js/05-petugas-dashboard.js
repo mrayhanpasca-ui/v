@@ -16,42 +16,16 @@ function renderPetugasDashboard() {
   container.innerHTML = `
 
     <section class="dashboard-page">
-
-      <div class="dashboard-heading">
-
-        <div>
-
-          <div class="eyebrow">
-            PETUGAS LAPANGAN
-          </div>
-
-          <h2>
-            Tugas Saya
-          </h2>
-
-          <p>
-            Daftar laporan yang
-            ditugaskan kepada Anda.
-          </p>
-
-        </div>
-
-        <div class="role-badge petugas-badge">
-          PETUGAS
-        </div>
-
-      </div>
-
+      ${renderDashboardPageHeader('Tugas Saya', 'Laporan yang ditugaskan kepada Anda')}
+      ${renderDashboardAlert(myReports, true)}
       ${renderPetugasStats(myReports)}
-
+      ${renderDashboardMonitoring(myReports)}
+      ${renderReportsPanelStart()}
       <div class="dashboard-toolbar">
-
         ${renderSearchFilter()}
-
       </div>
-
       <div id="report-list-area"></div>
-
+      ${renderReportsPanelEnd()}
     </section>
 
   `;

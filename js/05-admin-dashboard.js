@@ -16,40 +16,14 @@ function renderAdminDashboard() {
   container.innerHTML = `
 
     <section class="dashboard-page">
-
-      <div class="dashboard-heading">
-
-        <div>
-
-          <div class="eyebrow">
-            ADMINISTRATOR
-          </div>
-
-          <h2>
-            Dashboard Laporan
-          </h2>
-
-          <p>
-            Buat, kelola, tugaskan,
-            dan lengkapi laporan.
-          </p>
-
-        </div>
-
-        <div class="role-badge admin-badge">
-          ADMIN
-        </div>
-
-      </div>
-
+      ${renderDashboardPageHeader('Dashboard Admin', 'Pemantauan laporan lapangan', true)}
+      ${renderDashboardAlert(adminReports)}
       ${renderOverviewStats(adminReports)}
-
+      ${renderDashboardMonitoring(adminReports)}
+      ${renderReportsPanelStart()}
       <div class="dashboard-toolbar">
-
         ${renderSearchFilter()}
-
         <div class="dashboard-actions">
-
           <button
             class="btn btn-add"
             onclick="openModal()"
@@ -58,11 +32,9 @@ function renderAdminDashboard() {
           </button>
 
         </div>
-
       </div>
-
       <div id="report-list-area"></div>
-
+      ${renderReportsPanelEnd()}
     </section>
 
   `;

@@ -194,3 +194,8 @@
       if (status) status.classList.remove('show');
     }
 
+    function toggleUploadStatusDetails() {
+      const status = document.getElementById('upload-status');
+      if (status) status.classList.toggle('is-compact');
+    }
+
