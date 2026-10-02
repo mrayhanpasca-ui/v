@@ -193,6 +193,10 @@ function updateUserHeader() {
       : username;
   }
 
+  document.querySelectorAll('[data-superadmin-only]').forEach(item => {
+    item.hidden = !isSuperadmin();
+  });
+
 }
 
 
@@ -795,12 +799,13 @@ function getMyReports() {
 
 function showDatabaseLoading(title, message) {
   const loading = document.getElementById('database-loading');
+  const notificationStack = document.getElementById('notification-stack');
   const loadingTitle = document.getElementById('database-loading-title');
   const loadingText = document.getElementById('database-loading-text');
 
   if (!loading) return;
 
-  document.body.appendChild(loading);
+  if (notificationStack) notificationStack.prepend(loading);
   loading.classList.remove('in-dashboard');
 
   if (loadingTitle) {

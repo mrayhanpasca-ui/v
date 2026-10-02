@@ -20,27 +20,8 @@ function renderAdminDashboard() {
       ${renderDashboardAlert(adminReports)}
       ${renderOverviewStats(adminReports)}
       ${renderDashboardMonitoring(adminReports)}
-      ${renderReportsPanelStart()}
-      <div class="dashboard-toolbar">
-        ${renderSearchFilter()}
-        <div class="dashboard-actions">
-          <button
-            class="btn btn-add"
-            onclick="openModal()"
-          >
-            + Tambah Laporan
-          </button>
-
-        </div>
-      </div>
-      <div id="report-list-area"></div>
-      ${renderReportsPanelEnd()}
+      ${renderRecentReportsPanel(adminReports, false)}
     </section>
 
   `;
-
-  renderDashboardReports(
-    adminReports,
-    false
-  );
 }

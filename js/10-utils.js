@@ -20,27 +20,15 @@
         return '—';
       }
 
-      const d =
-        new Date(
-          dateStr +
-          'T00:00:00'
-        );
+      const date = parseDeviceDate(dateStr);
 
-      if(
-        isNaN(d)
-      ){
-        return dateStr;
-      }
+      if(!date) return dateStr;
 
-      return d.toLocaleDateString(
-        'id-ID',
-        {
-          day:'2-digit',
-          month:'short',
-          year:'numeric'
-        }
-      );
-
+      return formatDeviceDate(date, {
+        day:'2-digit',
+        month:'short',
+        year:'numeric'
+      });
     }
 
     let toastTimer;
@@ -106,15 +94,9 @@
       toastText.textContent =
         msg || 'Proses selesai.';
 
-      t
-        .querySelector(
-          '.tdot'
-        )
-        .style
-        .background =
-          isError
-            ? 'var(--damkar)'
-            : 'var(--green)';
+      t.classList.toggle('is-error', isError);
+      t.classList.toggle('is-success', !isError);
+      t.querySelector('.tdot').textContent = isError ? '!' : '✓';
 
       t.classList.add(
         'show'
@@ -134,6 +116,12 @@
         );
 
     }
+
+      function hideToast(){
+        const toast = document.getElementById('toast');
+        if (toast) toast.classList.remove('show');
+        clearTimeout(toastTimer);
+      }
 
     function getFriendlyUploadError(error, fallback = 'Upload foto gagal.') {
       if (!error) return fallback;

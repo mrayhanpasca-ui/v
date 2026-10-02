@@ -13,6 +13,16 @@ let currentFilter = 'semua';
 let currentSearch = '';
 let currentStatusFilter = 'semua';
 let currentSort = 'terbaru';
+let currentGroup = 'none';
+let currentAppView = ({
+  '#laporan': 'reports',
+  '#users': 'users',
+  '#audit-log': 'audit'
+})[window.location.hash] || 'dashboard';
+let dashboardChartReports = [];
+let dashboardSelectedMonth = '';
+let dashboardLeafletMap = null;
+let dashboardLeafletLayer = null;
 
 
 /* =========================================================
@@ -39,6 +49,22 @@ async function showDashboard(forceRefresh = false) {
   }
 
   function renderDashboardShell() {
+    if (['users', 'audit'].includes(currentAppView)) {
+      if (isSuperadmin()) {
+        if (currentAppView === 'users') renderUserManagement();
+        else renderAuditLog();
+        return;
+      }
+
+      currentAppView = 'dashboard';
+      history.replaceState({ appView: 'dashboard' }, '', '#dashboard');
+    }
+
+    if (currentAppView === 'reports') {
+      renderReportsPage();
+      return;
+    }
+
     if (isSuperadmin()) {
       renderSuperadminDashboard();
       return;
@@ -257,12 +283,15 @@ function getMyPetugasReports() {
 
 
 function formatDashboardToday() {
-  return new Intl.DateTimeFormat('id-ID', {
+  return formatDeviceDate(new Date(), {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
-    year: 'numeric'
-  }).format(new Date());
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short'
+  });
 }
 
 
@@ -298,41 +327,292 @@ function renderDashboardAlert(data, petugasMode = false) {
 
 
 function renderDashboardMonitoring(data) {
-  const now = new Date();
-  const months = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
-    return { date, key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`, label: date.toLocaleDateString('id-ID', { month: 'short' }) };
+  dashboardChartReports = Array.isArray(data) ? data : [];
+  const reportMonthKeys = dashboardChartReports
+    .map(getDashboardReportDate)
+    .filter(Boolean)
+    .map(date => getDeviceDateKey(date).slice(0, 7));
+  const currentDate = new Date();
+  const recentMonthKeys = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - index, 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
   });
-  const totals = months.map(month => data.filter(report => String(report.createdAt || '').slice(0, 7) === month.key).length);
-  const completed = months.map(month => data.filter(report => {
-    const dateMatches = String(report.updatedAt || report.createdAt || '').slice(0, 7) === month.key;
-    const status = getReportStatus(report);
-    return dateMatches && (status === REPORT_STATUS.SELESAI || status === REPORT_STATUS.SELESAI_PENANGANAN);
-  }).length);
-  const max = Math.max(...totals, ...completed, 1);
-  const chartWidth = 720;
-  const chartHeight = 190;
-  const point = values => values.map((value, index) => `${(index / (values.length - 1)) * chartWidth},${chartHeight - (value / max) * 145 - 12}`).join(' ');
-  const hasData = totals.some(Boolean) || completed.some(Boolean);
+  const monthKeys = [...new Set([...reportMonthKeys, ...recentMonthKeys])].sort();
+
+  if (!monthKeys.includes(dashboardSelectedMonth)) {
+    dashboardSelectedMonth = monthKeys[monthKeys.length - 1] || '';
+  }
+
+  const monthOptions = monthKeys.map(key => {
+    const [year, month] = key.split('-').map(Number);
+    const label = formatDeviceDate(new Date(year, month - 1, 1), {
+      month: 'long',
+      year: 'numeric'
+    });
+    return `<option value="${key}" ${key === dashboardSelectedMonth ? 'selected' : ''}>${escapeDashboardHtml(label)}</option>`;
+  }).join('');
+
+  window.setTimeout(renderDashboardVisualizations, 0);
 
   return `
-    <section class="monitoring-card">
-      <div class="monitoring-card-header"><div><h2>Tren Laporan Bulanan</h2><p>Laporan masuk vs diselesaikan</p></div><span class="monitoring-period">6 bulan terakhir</span></div>
-      ${hasData ? `<div class="trend-chart-wrap"><svg class="trend-chart" viewBox="0 0 ${chartWidth} ${chartHeight}" preserveAspectRatio="none" role="img" aria-label="Tren laporan bulanan">
-        ${[0, 1, 2, 3, 4].map(step => `<line x1="0" y1="${chartHeight - 12 - step * 36}" x2="${chartWidth}" y2="${chartHeight - 12 - step * 36}" />`).join('')}
-        <polyline class="trend-total" points="${point(totals)}" />
-        <polyline class="trend-completed" points="${point(completed)}" />
-        ${totals.map((value, index) => `<circle class="trend-total-dot" cx="${(index / (totals.length - 1)) * chartWidth}" cy="${chartHeight - (value / max) * 145 - 12}" r="3" />`).join('')}
-        ${completed.map((value, index) => `<circle class="trend-completed-dot" cx="${(index / (completed.length - 1)) * chartWidth}" cy="${chartHeight - (value / max) * 145 - 12}" r="3" />`).join('')}
-      </svg><div class="trend-labels">${months.map(month => `<span>${month.label}</span>`).join('')}</div></div>` : `<div class="monitoring-empty">Belum ada data tren untuk ditampilkan.</div>`}
-      <div class="trend-legend"><span><i class="legend-total"></i>Total Laporan</span><span><i class="legend-completed"></i>Selesai</span></div>
+    <section class="dashboard-visualizations" aria-label="Analisis laporan">
+      <article class="monitoring-card daily-chart-card">
+        <div class="monitoring-card-header">
+          <div><h2>Laporan Harian</h2><p id="daily-chart-summary">Jumlah laporan pada setiap tanggal dalam bulan</p></div>
+          <label class="chart-month-control"><span>Bulan</span><select id="dashboard-chart-month" aria-label="Pilih bulan laporan" onchange="setDashboardChartMonth(this.value)">${monthOptions || '<option value="">Belum ada data</option>'}</select></label>
+        </div>
+        <div class="daily-chart-scroll"><div id="daily-reports-chart" class="daily-reports-chart"></div></div>
+      </article>
+      <article class="monitoring-card regional-chart-card">
+        <div class="monitoring-card-header"><div><h2>Sebaran Kasus</h2><p id="regional-chart-summary">Kasus menurut wilayah untuk bulan terpilih</p></div><span class="chart-map-key"><i></i>Jumlah kasus</span></div>
+        <div id="regional-reports-map" class="regional-reports-map" role="img" aria-label="Peta titik laporan per wilayah"></div>
+        <div id="regional-chart-empty" class="chart-empty" hidden>Belum ada laporan dengan koordinat pada bulan ini.</div>
+      </article>
+      <article class="monitoring-card type-chart-card">
+        <div class="monitoring-card-header"><div><h2>Kasus per Jenis</h2><p>Komposisi laporan untuk bulan terpilih</p></div></div>
+        <div class="type-chart-layout"><div id="report-type-chart" class="report-type-chart"></div><div id="report-type-legend" class="report-type-legend"></div></div>
+      </article>
     </section>
   `;
 }
 
 
+function getDashboardReportDate(report) {
+  const awal = report?.laporanAwal || {};
+  const value = awal.tanggal || awal.waktuLaporanMasuk || report?.createdAt;
+  return parseDeviceDate(value);
+}
+
+
+function setDashboardChartMonth(monthKey) {
+  dashboardSelectedMonth = monthKey;
+  const monthSelect = document.getElementById('dashboard-chart-month');
+  if (monthSelect && monthSelect.value !== monthKey) monthSelect.value = monthKey;
+  renderDashboardVisualizations();
+}
+
+
+function getDashboardReportsForSelectedMonth() {
+  return dashboardChartReports.filter(report => {
+    const date = getDashboardReportDate(report);
+    return date && getDeviceDateKey(date).slice(0, 7) === dashboardSelectedMonth;
+  });
+}
+
+
+function getDashboardReportType(report) {
+  const awal = report?.laporanAwal || {};
+  const detailType = awal.jenisKegiatan || awal.jenisPelanggaran || awal.jenisKebakaran || awal.jenisKejadian;
+  if (detailType) return detailType;
+
+  const category = awal.jenisLaporan || report?.kategori || '';
+  return CATEGORY_CONFIG[category]?.label || category || 'Lainnya';
+}
+
+
+function renderDashboardVisualizations() {
+  const dailyContainer = document.getElementById('daily-reports-chart');
+  const typeContainer = document.getElementById('report-type-chart');
+  const legendContainer = document.getElementById('report-type-legend');
+  if (!dailyContainer || !typeContainer || !legendContainer) return;
+
+  const [year, month] = dashboardSelectedMonth.split('-').map(Number);
+  const monthReports = getDashboardReportsForSelectedMonth();
+  const reportDate = year && month ? new Date(year, month - 1, 1) : null;
+  const daysInMonth = reportDate ? new Date(year, month, 0).getDate() : 0;
+  const dailyCounts = Array.from({ length: daysInMonth }, () => 0);
+
+  monthReports.forEach(report => {
+    const date = getDashboardReportDate(report);
+    if (date) dailyCounts[date.getDate() - 1] += 1;
+  });
+
+  const monthLabel = reportDate
+    ? formatDeviceDate(reportDate, { month: 'long', year: 'numeric' })
+    : 'bulan terpilih';
+  const summary = document.getElementById('daily-chart-summary');
+  if (summary) summary.textContent = `${formatNumber(monthReports.length)} laporan · ${monthLabel}`;
+
+  if (!daysInMonth) {
+    dailyContainer.innerHTML = '<div class="chart-empty">Belum ada data tanggal laporan.</div>';
+  } else {
+    dailyContainer.innerHTML = renderDailyReportSvg(dailyCounts, monthLabel);
+  }
+
+  renderReportTypePie(monthReports, typeContainer, legendContainer);
+  renderRegionalReportMap(monthReports);
+}
+
+
+function renderDailyReportSvg(counts, monthLabel) {
+  const width = 960;
+  const height = 250;
+  const left = 40;
+  const right = 12;
+  const top = 16;
+  const bottom = 38;
+  const chartWidth = width - left - right;
+  const chartHeight = height - top - bottom;
+  const max = Math.max(...counts, 1);
+  const step = chartWidth / counts.length;
+  const barWidth = Math.min(18, step * .66);
+  const yTicks = [...new Set(Array.from({ length: 5 }, (_, index) =>
+    Math.round(max * (4 - index) / 4)
+  ))].sort((left, right) => right - left);
+  const grid = yTicks.map(value => {
+    const y = top + chartHeight * (1 - value / max);
+    return `<g class="daily-chart-grid"><line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}"/><text x="${left - 10}" y="${y + 4}" text-anchor="end">${value}</text></g>`;
+  }).join('');
+  const bars = counts.map((value, index) => {
+    const x = left + index * step + (step - barWidth) / 2;
+    const barHeight = value ? Math.max(3, chartHeight * value / max) : 0;
+    const y = top + chartHeight - barHeight;
+    const label = `${String(index + 1).padStart(2, '0')} ${monthLabel}: ${value} laporan`;
+    const dayLabel = index === 0 || (index + 1) % 5 === 0 || index === counts.length - 1
+      ? `<text class="daily-chart-day" x="${x + barWidth / 2}" y="${height - 12}" text-anchor="middle">${index + 1}</text>`
+      : '';
+    return `<g class="daily-chart-bar-group"><title>${escapeDashboardHtml(label)}</title><rect class="daily-chart-bar ${value ? 'has-value' : ''}" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="${Math.min(4, barWidth / 2)}"/><rect class="daily-chart-hit-area" x="${left + index * step}" y="${top}" width="${step}" height="${chartHeight}"/>${dayLabel}</g>`;
+  }).join('');
+
+  return `<svg class="daily-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Jumlah laporan harian untuk ${escapeDashboardAttribute(monthLabel)}">${grid}${bars}</svg>`;
+}
+
+
+function renderReportTypePie(reportsForMonth, chartContainer, legendContainer) {
+  const typeCounts = new Map();
+  reportsForMonth.forEach(report => {
+    const type = getDashboardReportType(report);
+    typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
+  });
+
+  const sorted = [...typeCounts.entries()].sort((left, right) => right[1] - left[1]);
+  const colors = ['#315A91', '#E12D24', '#A98B56', '#3E8E5B', '#7C1828', '#557C9E'];
+  if (!sorted.length) {
+    chartContainer.innerHTML = '<div class="pie-empty">Belum ada data</div>';
+    legendContainer.innerHTML = '';
+    return;
+  }
+
+  const center = 100;
+  const radius = 82;
+  const total = sorted.reduce((sum, [, count]) => sum + count, 0);
+  let angle = -Math.PI / 2;
+  const paths = sorted.length === 1
+    ? `<circle cx="${center}" cy="${center}" r="${radius}" fill="${colors[0]}"><title>${escapeDashboardHtml(sorted[0][0])}: ${sorted[0][1]} kasus</title></circle>`
+    : sorted.map(([label, count], index) => {
+    const nextAngle = angle + Math.PI * 2 * count / total;
+    const x1 = center + radius * Math.cos(angle);
+    const y1 = center + radius * Math.sin(angle);
+    const x2 = center + radius * Math.cos(nextAngle);
+    const y2 = center + radius * Math.sin(nextAngle);
+    const largeArc = nextAngle - angle > Math.PI ? 1 : 0;
+    const path = `M ${center} ${center} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+    const slice = `<path d="${path}" fill="${colors[index % colors.length]}" stroke="#fff" stroke-width="2"><title>${escapeDashboardHtml(label)}: ${count} kasus</title></path>`;
+    angle = nextAngle;
+    return slice;
+    }).join('');
+
+  chartContainer.innerHTML = `<svg class="report-type-pie-svg" viewBox="0 0 200 200" role="img" aria-label="Komposisi ${total} kasus menurut jenis">${paths}</svg><div class="pie-total"><strong>${formatNumber(total)}</strong><span>kasus</span></div>`;
+  legendContainer.innerHTML = sorted.map(([label, count], index) => `<div class="report-type-legend-item"><i style="--legend-color:${colors[index % colors.length]}"></i><span title="${escapeDashboardAttribute(label)}">${escapeDashboardHtml(label)}</span><strong>${count}</strong></div>`).join('');
+}
+
+
+function getDashboardCoordinates(report) {
+  const location = report?.laporanAwal?.lokasi || {};
+  const rawLatitude = location.latitude ?? location.lat;
+  const rawLongitude = location.longitude ?? location.lng ?? location.lon;
+  let latitude = rawLatitude === '' || rawLatitude == null ? Number.NaN : Number(rawLatitude);
+  let longitude = rawLongitude === '' || rawLongitude == null ? Number.NaN : Number(rawLongitude);
+
+  if ((!Number.isFinite(latitude) || !Number.isFinite(longitude)) && typeof extractLatLng === 'function') {
+    const parsed = extractLatLng(location.googleMapsUrl || location.mapsUrl || location.alamat || location.inputAsli || '');
+    if (parsed) {
+      latitude = parsed.lat;
+      longitude = parsed.lng;
+    }
+  }
+
+  return Number.isFinite(latitude) && Number.isFinite(longitude) &&
+    Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+    ? { latitude, longitude }
+    : null;
+}
+
+
+function renderRegionalReportMap(reportsForMonth) {
+  const mapElement = document.getElementById('regional-reports-map');
+  const emptyElement = document.getElementById('regional-chart-empty');
+  if (!mapElement || !emptyElement) return;
+
+  const grouped = new Map();
+  reportsForMonth.forEach(report => {
+    const coordinates = getDashboardCoordinates(report);
+    if (!coordinates) return;
+
+    const location = report?.laporanAwal?.lokasi || {};
+    const region = location.kecamatan || location.desaKelurahan || location.kelurahan ||
+      location.kabupaten || `Area ${coordinates.latitude.toFixed(3)}, ${coordinates.longitude.toFixed(3)}`;
+    const key = String(region).trim().toLocaleLowerCase('id-ID');
+    const group = grouped.get(key) || { name: String(region).trim(), count: 0, latitude: 0, longitude: 0 };
+    group.count += 1;
+    group.latitude += coordinates.latitude;
+    group.longitude += coordinates.longitude;
+    grouped.set(key, group);
+  });
+
+  const locations = [...grouped.values()].map(group => ({
+    ...group,
+    latitude: group.latitude / group.count,
+    longitude: group.longitude / group.count
+  }));
+  emptyElement.hidden = locations.length > 0;
+  mapElement.classList.toggle('is-empty', locations.length === 0);
+
+  if (!window.L) {
+    emptyElement.hidden = false;
+    emptyElement.textContent = 'Peta belum dapat dimuat. Periksa koneksi internet.';
+    return;
+  }
+
+  if (!dashboardLeafletMap || dashboardLeafletMap.getContainer() !== mapElement) {
+    if (dashboardLeafletMap) dashboardLeafletMap.remove();
+    dashboardLeafletMap = L.map(mapElement, { scrollWheelZoom: false, zoomControl: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(dashboardLeafletMap);
+    dashboardLeafletLayer = L.layerGroup().addTo(dashboardLeafletMap);
+  }
+
+  dashboardLeafletLayer.clearLayers();
+  if (locations.length) {
+    const bounds = [];
+    locations.forEach(location => {
+      const point = [location.latitude, location.longitude];
+      bounds.push(point);
+      const radius = Math.min(22, 8 + Math.sqrt(location.count) * 4);
+      const tooltip = `<strong>${escapeDashboardHtml(location.name)}</strong><br>${location.count} ${location.count === 1 ? 'kasus' : 'kasus'}`;
+      L.circleMarker(point, {
+        radius,
+        color: '#fff',
+        weight: 2,
+        fillColor: '#E12D24',
+        fillOpacity: .82
+      }).bindTooltip(tooltip, { direction: 'top', opacity: .98, sticky: true })
+        .bindPopup(tooltip)
+        .addTo(dashboardLeafletLayer);
+    });
+    dashboardLeafletMap.fitBounds(bounds, { padding: [24, 24], maxZoom: 12 });
+  } else {
+    dashboardLeafletMap.setView([-3.25, 116.2], 8);
+  }
+
+  window.requestAnimationFrame(() => dashboardLeafletMap?.invalidateSize());
+}
+
+
 function renderReportsPanelStart() {
-  return `<section class="reports-panel"><div class="reports-panel-header"><div><h2>Laporan Terbaru</h2><p>Laporan yang memerlukan perhatian</p></div><button type="button" onclick="setDashboardSort('terbaru')">Lihat Semua <span aria-hidden="true">→</span></button></div>`;
+  return '';
 }
 
 
@@ -354,12 +634,142 @@ function toggleAppSidebar() {
 }
 
 
-function setSidebarView(view) {
-  document.querySelectorAll('.sidebar-nav-item').forEach(item => item.classList.toggle('active', item.textContent.trim().toLowerCase().startsWith(view === 'reports' ? 'laporan' : view)));
-  if (view === 'reports') document.getElementById('report-list-area')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  if (view === 'profile') showToast('Profil pengguna sedang aktif di topbar.');
-  document.getElementById('app-screen')?.classList.remove('sidebar-open');
+function navigateSidebarLink(event, view) {
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  setSidebarView(view);
 }
+
+
+function setSidebarView(view, fromHistory = false) {
+  if (view === 'profile') {
+    showToast('Profil pengguna sedang aktif di topbar.');
+    return;
+  }
+
+  if (!['dashboard', 'reports', 'users', 'audit'].includes(view)) return;
+  if (['users', 'audit'].includes(view) && !isSuperadmin()) {
+    history.replaceState({ appView: 'dashboard' }, '', '#dashboard');
+    setSidebarView('dashboard', true);
+    showToast('Halaman ini hanya dapat diakses Superadmin.', true);
+    return;
+  }
+
+  currentAppView = view;
+  if (!fromHistory) {
+    const nextHash = ({
+      dashboard: '#dashboard',
+      reports: '#laporan',
+      users: '#users',
+      audit: '#audit-log'
+    })[view];
+    if (window.location.hash !== nextHash) history.pushState({ appView: view }, '', nextHash);
+  }
+  const topbarSearch = document.getElementById('topbar-dashboard-search');
+  if (topbarSearch) topbarSearch.value = currentSearch;
+
+  const appScreen = document.getElementById('app-screen');
+  appScreen?.classList.toggle('reports-view', view === 'reports');
+  appScreen?.classList.remove('sidebar-open');
+  document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+    const itemView = item.dataset.appView || (item.textContent.trim().toLowerCase().startsWith('laporan') ? 'reports' : 'dashboard');
+    item.classList.toggle('active', view === itemView);
+  });
+
+  if (view === 'reports') {
+    renderReportsPage();
+  } else if (view === 'users') {
+    renderUserManagement();
+  } else if (view === 'audit') {
+    renderAuditLog();
+  } else {
+    renderDashboardHome();
+  }
+}
+
+
+function renderDashboardHome() {
+  const container = document.getElementById('dashboard-container');
+  if (!container || !currentUser) return;
+
+  document.getElementById('app-screen')?.classList.remove('reports-view');
+  if (currentAppView === 'users' && isSuperadmin()) renderUserManagement();
+  else if (currentAppView === 'audit' && isSuperadmin()) renderAuditLog();
+  else if (isSuperadmin()) renderSuperadminDashboard();
+  else if (isAdmin()) renderAdminDashboard();
+  else if (isPetugas()) renderPetugasDashboard();
+}
+
+
+function renderRecentReportsPanel(sourceReports, petugasMode = false) {
+  const recentReports = (Array.isArray(sourceReports) ? sourceReports : [])
+    .slice()
+    .sort((left, right) => String(right.createdAt || right.updatedAt || '').localeCompare(String(left.createdAt || left.updatedAt || '')))
+    .slice(0, 5);
+
+  return `
+    <section class="reports-panel recent-reports-panel">
+      <div class="reports-panel-header">
+        <div><h2>Laporan Terbaru</h2><p>${recentReports.length ? `Menampilkan ${recentReports.length} laporan terbaru` : 'Belum ada laporan'}</p></div>
+        <a class="reports-view-link" href="#laporan" onclick="if (!event.ctrlKey && !event.metaKey && event.button === 0) { event.preventDefault(); setSidebarView('reports'); }">Lihat Semua <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="report-list recent-report-list">
+        ${recentReports.length
+          ? recentReports.map(report => renderDashboardCard(report, petugasMode)).join('')
+          : '<div class="empty-state dashboard-empty"><div class="display">Belum ada laporan</div><div>Belum ada laporan untuk ditampilkan.</div></div>'}
+      </div>
+    </section>
+  `;
+}
+
+
+function renderReportsPage() {
+  const container = document.getElementById('dashboard-container');
+  if (!container || !currentUser) return;
+
+  document.getElementById('app-screen')?.classList.add('reports-view');
+  document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+    item.classList.toggle('active', item.textContent.trim().toLowerCase().startsWith('laporan'));
+  });
+  const reportsForUser = getCurrentDashboardReports();
+  const petugasMode = isPetugas();
+  const description = petugasMode
+    ? 'Daftar lengkap laporan yang ditugaskan kepada Anda'
+    : 'Daftar lengkap laporan lapangan';
+
+  container.innerHTML = `
+    <section class="dashboard-page reports-list-page">
+      <div class="dashboard-page-header">
+        <div>
+          <div class="dashboard-kicker">SIKOMPAK / ${escapeDashboardHtml(currentUser.role || 'USER')}</div>
+          <h1>Daftar Laporan</h1>
+          <p>${escapeDashboardHtml(description)}</p>
+        </div>
+        ${!petugasMode ? '<button class="btn btn-add dashboard-primary-action" onclick="openModal()"><span aria-hidden="true">＋</span> Buat Laporan Baru</button>' : ''}
+      </div>
+      <section class="reports-panel full-reports-panel">
+        <div class="reports-panel-header"><div><h2>Semua Laporan</h2><p id="full-report-count">${formatNumber(reportsForUser.length)} laporan</p></div></div>
+        <div class="dashboard-toolbar">
+          ${renderSearchFilter()}
+        </div>
+        <div id="report-list-area"></div>
+      </section>
+    </section>
+  `;
+
+  renderDashboardReports(reportsForUser, petugasMode);
+}
+
+
+window.addEventListener('popstate', () => {
+  const view = ({ '#laporan': 'reports', '#users': 'users', '#audit-log': 'audit' })[window.location.hash] || 'dashboard';
+  if (view !== currentAppView) setSidebarView(view, true);
+});
+
+window.addEventListener('hashchange', () => {
+  const view = ({ '#laporan': 'reports', '#users': 'users', '#audit-log': 'audit' })[window.location.hash] || 'dashboard';
+  if (view !== currentAppView) setSidebarView(view, true);
+});
 
 
 /* =========================================================
@@ -622,43 +1032,21 @@ function renderPetugasStats(
    SEARCH + FILTER
 ========================================================= */
 
-function renderSearchFilter() {
+function renderSearchFilter(includeSearch = true) {
+  const searchControl = includeSearch ? `
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-4-4" />
+        </svg>
+        <input type="search" id="dashboard-search" placeholder="Cari laporan..." value="${escapeDashboardHtml(currentSearch)}" oninput="setDashboardSearch(this.value)">
+      </div>
+  ` : '';
 
   return `
 
     <div class="toolbar-left dashboard-search-area">
-
-      <div class="search-box">
-
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-
-          <circle
-            cx="11"
-            cy="11"
-            r="7"
-          />
-
-          <path
-            d="m20 20-4-4"
-          />
-
-        </svg>
-
-        <input
-          type="search"
-          id="dashboard-search"
-          placeholder="Cari laporan..."
-          value="${escapeDashboardHtml(currentSearch)}"
-          oninput="setDashboardSearch(this.value)"
-        >
-
-      </div>
-
+      ${searchControl}
 
       <div class="filter-tabs">
 
@@ -725,6 +1113,17 @@ function renderSearchFilter() {
           </select>
         </label>
 
+        <label class="dashboard-select-label">
+          Kelompokkan
+          <select onchange="setDashboardGroup(this.value)">
+            <option value="none" ${currentGroup === 'none' ? 'selected' : ''}>Tanpa grup</option>
+            <option value="sector" ${currentGroup === 'sector' ? 'selected' : ''}>Sektor</option>
+            <option value="status" ${currentGroup === 'status' ? 'selected' : ''}>Status</option>
+            <option value="month" ${currentGroup === 'month' ? 'selected' : ''}>Bulan</option>
+            <option value="district" ${currentGroup === 'district' ? 'selected' : ''}>Kecamatan</option>
+          </select>
+        </label>
+
       </div>
 
     </div>
@@ -748,6 +1147,8 @@ function setDashboardSearch(
 
   const topbarSearch = document.getElementById('topbar-dashboard-search');
   if (topbarSearch && topbarSearch.value !== currentSearch) topbarSearch.value = currentSearch;
+  const reportSearch = document.getElementById('dashboard-search');
+  if (reportSearch && reportSearch.value !== currentSearch) reportSearch.value = currentSearch;
 
   refreshDashboardList();
 
@@ -793,11 +1194,18 @@ function setDashboardSort(
 }
 
 
+function setDashboardGroup(group) {
+  currentGroup = group || 'none';
+  refreshDashboardList();
+}
+
+
 /* =========================================================
    REFRESH
 ========================================================= */
 
 function refreshDashboardList() {
+  if (currentAppView !== 'reports') return;
 
   const data =
     getCurrentDashboardReports();
@@ -1031,6 +1439,9 @@ function renderDashboardReports(
     }
   );
 
+  const countLabel = document.getElementById('full-report-count');
+  if (countLabel) countLabel.textContent = `${formatNumber(filtered.length)} laporan`;
+
 
   /*
     EMPTY
@@ -1039,6 +1450,8 @@ function renderDashboardReports(
   if (
     filtered.length === 0
   ) {
+
+    if (countLabel) countLabel.textContent = '0 laporan';
 
     container.innerHTML = `
 
@@ -1073,23 +1486,35 @@ function renderDashboardReports(
     LIST
   */
 
-  container.innerHTML = `
+  const cardMarkup = report => renderDashboardCard(report, petugasMode);
+  let listMarkup = '';
 
-    <div class="report-list">
+  if (currentGroup === 'none') {
+    listMarkup = filtered.map(cardMarkup).join('');
+  } else {
+    const groups = new Map();
+    filtered.forEach(report => {
+      let label = 'Tidak diketahui';
+      if (currentGroup === 'sector') label = getReportSector(report) === 'satpol' ? 'Satpol PP' : 'Damkar';
+      if (currentGroup === 'status') label = getStatusLabelSafe(getReportStatus(report));
+      if (currentGroup === 'district') label = report?.laporanAwal?.lokasi?.kecamatan || 'Kecamatan belum diisi';
+      if (currentGroup === 'month') {
+        const date = getDashboardReportDate(report);
+        label = date ? formatDeviceDate(date, { month: 'long', year: 'numeric' }) : 'Tanggal belum diisi';
+      }
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label).push(report);
+    });
 
-      ${filtered
-        .map(
-          report =>
-            renderDashboardCard(
-              report,
-              petugasMode
-            )
-        )
-        .join('')}
+    listMarkup = [...groups.entries()].map(([label, groupReports]) => `
+      <section class="report-list-group">
+        <h2><span>${escapeDashboardHtml(label)}</span><small>${groupReports.length} laporan</small></h2>
+        ${groupReports.map(cardMarkup).join('')}
+      </section>
+    `).join('');
+  }
 
-    </div>
-
-  `;
+  container.innerHTML = `<div class="report-list">${listMarkup}</div>`;
 
 }
 
@@ -2545,20 +2970,7 @@ function reportMatchesSearch(
 
 function openUserManagement() {
 
-  if (
-    typeof renderUserManagement ===
-    'function'
-  ) {
-
-    renderUserManagement();
-    return;
-
-  }
-
-
-  showDashboardToast(
-    'Menu Manajemen User belum tersedia.'
-  );
+  setSidebarView('users');
 
 }
 
@@ -2773,29 +3185,14 @@ function formatDashboardDate(
   }
 
 
-  const date =
-    new Date(value);
+  const date = parseDeviceDate(value);
+  if (!date) return String(value);
 
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-
-    return String(value);
-
-  }
-
-
-  return date.toLocaleDateString(
-    'id-ID',
-    {
+  return formatDeviceDate(date, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
-    }
-  );
+  });
 
 }
 

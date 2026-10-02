@@ -224,7 +224,64 @@ function generateReportId(existingReports = []) {
 
 /* ================= HELPERS ================= */
 
+function getDeviceTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta';
+  } catch (error) {
+    return 'Asia/Jakarta';
+  }
+}
+
+
+function parseDeviceDate(value) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (value === null || typeof value === 'undefined' || value === '') {
+    return null;
+  }
+
+  const text = String(value).trim();
+  const dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(text);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+
+function formatDeviceDate(value, options = {}) {
+  const date = parseDeviceDate(value);
+  if (!date) return String(value || '—');
+
+  return new Intl.DateTimeFormat('id-ID', {
+    ...options,
+    timeZone: getDeviceTimeZone()
+  }).format(date);
+}
+
+
+function getDeviceDateKey(value) {
+  const date = parseDeviceDate(value);
+  if (!date) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: getDeviceTimeZone(),
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date).reduce((result, part) => {
+    if (part.type !== 'literal') result[part.type] = part.value;
+    return result;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function getCurrentDateTime() {
+  // Persist absolute timestamps in UTC; format them for display in device time.
   return new Date().toISOString();
 }
 

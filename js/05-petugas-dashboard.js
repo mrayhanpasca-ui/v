@@ -20,18 +20,9 @@ function renderPetugasDashboard() {
       ${renderDashboardAlert(myReports, true)}
       ${renderPetugasStats(myReports)}
       ${renderDashboardMonitoring(myReports)}
-      ${renderReportsPanelStart()}
-      <div class="dashboard-toolbar">
-        ${renderSearchFilter()}
-      </div>
-      <div id="report-list-area"></div>
-      ${renderReportsPanelEnd()}
+      ${renderRecentReportsPanel(myReports, true)}
     </section>
 
   `;
 
-  renderDashboardReports(
-    myReports,
-    true
-  );
 }

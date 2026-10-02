@@ -188,6 +188,94 @@
       return Array.isArray(masterWilayah) ? masterWilayah : [];
     }
 
+    function normalizeAddressMatchText(value){
+      return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('id-ID')
+        .replace(/\b(kabupaten|kab\.?|kota|kecamatan|kec\.?|kelurahan|kel\.?|desa)\b/g, ' ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+        .replace(/\s+/g, ' ');
+    }
+
+    function addressContainsRegionPhrase(address, region){
+      const normalizedAddress = ` ${normalizeAddressMatchText(address)} `;
+      const normalizedRegion = normalizeAddressMatchText(region);
+      return Boolean(normalizedRegion && normalizedAddress.includes(` ${normalizedRegion} `));
+    }
+
+    function extractAddressPostalCode(address){
+      const labeled = String(address || '').match(/\b(?:kode\s*pos|postal\s*code)\s*[:#-]?\s*(\d{5})\b/i);
+      if (labeled) return labeled[1];
+      return String(address || '').match(/(?:^|\D)(\d{5})(?=\D|$)/)?.[1] || '';
+    }
+
+    function matchMasterRegionInAddress(address){
+      const rows = getMasterRegionRows().filter(row =>
+        !row.kabupaten || normalizeRegionName(row.kabupaten) === normalizeRegionName(SYSTEM_REGION.kabupaten)
+      );
+      const postalCode = extractAddressPostalCode(address);
+      const villageMatches = rows
+        .filter(row => row.desaKelurahan && addressContainsRegionPhrase(address, row.desaKelurahan))
+        .sort((left, right) => normalizeAddressMatchText(right.desaKelurahan).length - normalizeAddressMatchText(left.desaKelurahan).length);
+
+      if (villageMatches.length){
+        const longestName = normalizeAddressMatchText(villageMatches[0].desaKelurahan);
+        const sameName = villageMatches.filter(row => normalizeAddressMatchText(row.desaKelurahan) === longestName);
+        const districtMentions = [...new Set(sameName
+          .map(row => row.kecamatan)
+          .filter(district => district && addressContainsRegionPhrase(address, district)))];
+        const candidates = districtMentions.length
+          ? sameName.filter(row => districtMentions.some(district => normalizeRegionName(district) === normalizeRegionName(row.kecamatan)))
+          : sameName;
+        const uniqueCandidates = [...new Map(candidates.map(row => [
+          `${normalizeRegionName(row.desaKelurahan)}|${normalizeRegionName(row.kecamatan)}`,
+          row
+        ])).values()];
+
+        if (uniqueCandidates.length === 1){
+          const row = uniqueCandidates[0];
+          return {
+            matched: true,
+            desaKelurahan: row.desaKelurahan,
+            kelurahan: row.desaKelurahan,
+            kecamatan: row.kecamatan || '',
+            kabupaten: row.kabupaten || SYSTEM_REGION.kabupaten,
+            provinsi: SYSTEM_REGION.provinsi,
+            kodePos: row.kodePos || postalCode,
+            jenis: row.jenis || ''
+          };
+        }
+
+        return { matched: false, ambiguous: true, postalCode };
+      }
+
+      const districtMatches = [...new Map(rows
+        .filter(row => row.kecamatan && addressContainsRegionPhrase(address, row.kecamatan))
+        .map(row => [normalizeRegionName(row.kecamatan), row])).values()];
+
+      if (districtMatches.length === 1){
+        const row = districtMatches[0];
+        const districtPostalCodes = [...new Set(rows
+          .filter(item => normalizeRegionName(item.kecamatan) === normalizeRegionName(row.kecamatan))
+          .map(item => String(item.kodePos || '').trim())
+          .filter(Boolean))];
+        return {
+          matched: true,
+          desaKelurahan: '',
+          kelurahan: '',
+          kecamatan: row.kecamatan,
+          kabupaten: row.kabupaten || SYSTEM_REGION.kabupaten,
+          provinsi: SYSTEM_REGION.provinsi,
+          kodePos: districtPostalCodes.length === 1 ? districtPostalCodes[0] : postalCode,
+          jenis: ''
+        };
+      }
+
+      return { matched: false, ambiguous: districtMatches.length > 1, postalCode };
+    }
+
     function getMasterKecamatanOptions(){
       const kecamatanList = [...new Set(getMasterRegionRows()
         .filter(row => normalizeRegionName(row.kabupaten) === normalizeRegionName(SYSTEM_REGION.kabupaten))
@@ -542,8 +630,16 @@
           result[name] = input ? input.value.trim() : '';
           return result;
         }, {});
+        const textMatch = matchMasterRegionInAddress(raw);
 
-        if (coordinates){
+        if (textMatch.matched){
+          detected = {
+            ...textMatch,
+            latitude: coordinates?.lat ?? existingLocation.latitude ?? null,
+            longitude: coordinates?.lng ?? existingLocation.longitude ?? null,
+            formattedAddress: ''
+          };
+        } else if (coordinates){
           detected = await reverseGeocode(coordinates.lat, coordinates.lng);
         } else {
           detected = await geocodeAlamat(raw);
@@ -563,7 +659,7 @@
         const detectedProvinsi = detected.provinsi || '';
         const outsideSystemRegion = detectedKabupaten &&
           normalizeRegionName(detectedKabupaten) !== normalizeRegionName(SYSTEM_REGION.kabupaten);
-        const masterMatch = getMasterRegionRows().some(row =>
+        const masterMatch = textMatch.matched || getMasterRegionRows().some(row =>
           normalizeRegionName(row.kecamatan) === normalizeRegionName(detected.kecamatan) &&
           normalizeRegionName(row.desaKelurahan) === normalizeRegionName(detected.kelurahan)
         );
@@ -592,7 +688,7 @@
           longitude: detected.longitude ?? coordinates?.lng ?? existingLocation.longitude ?? null,
           mapsUrl: coordinateText ? buildMapsUrlFromKoordinat(coordinateText) : buildMapsUrlFromAlamat(raw),
           googleMapsUrl: coordinateText ? buildMapsUrlFromKoordinat(coordinateText) : buildMapsUrlFromAlamat(raw),
-          sumberWilayah: 'google',
+          sumberWilayah: textMatch.matched ? 'teks-master-wilayah' : 'google',
           sourceType: detectLocationSource(raw),
           reverseGeocodingStatus: 'BERHASIL',
           terakhirDideteksi: getCurrentDateTime(),
@@ -604,10 +700,14 @@
         el.dataset.maps = nextLocation.mapsUrl;
         syncLocationResult(key, nextLocation);
         showToast(
-          outsideSystemRegion
+          textMatch.ambiguous && !textMatch.matched
+            ? 'Nama wilayah pada alamat cocok dengan beberapa kecamatan. Tambahkan nama kecamatan agar bisa dipilih dengan tepat.'
+            : outsideSystemRegion
             ? `Wilayah terdeteksi di luar ${SYSTEM_REGION.kabupaten}. Laporan tetap dapat disimpan.`
-            : masterMatch
-              ? 'Wilayah berhasil dideteksi dan cocok dengan MasterWilayah.'
+            : textMatch.matched
+              ? 'Kelurahan dan kecamatan cocok dengan alamat. Kode pos diambil dari MasterWilayah atau alamat jika tersedia.'
+              : masterMatch
+                ? 'Wilayah berhasil dideteksi dan cocok dengan MasterWilayah.'
               : 'Wilayah terdeteksi, tetapi perlu diperiksa dan dicocokkan dengan MasterWilayah.'
         );
 

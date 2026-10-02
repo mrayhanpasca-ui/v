@@ -773,18 +773,19 @@ function renderUserManagement() {
     return;
   }
 
-  const overlay = document.getElementById('modal-overlay');
-  overlay.querySelector('.modal-head h2').textContent = 'Manajemen User';
-  overlay.querySelector('.cat-tabs').innerHTML = '';
-  overlay.querySelector('.form-grid').innerHTML = `
-    <div class="management-toolbar field span2">
+  const container = document.getElementById('dashboard-container');
+  if (!container) return;
+  container.innerHTML = `
+    <section class="dashboard-page user-management-page">
+      ${renderDashboardPageHeader('Manajemen User', 'Kelola akun dan hak akses pengguna')}
+      <div class="management-toolbar">
       <div>
         <strong>Daftar Pengguna</strong>
         <small>${users.length} akun terdaftar</small>
       </div>
       <button class="btn btn-submit btn-sm" onclick="renderUserForm()">+ Tambah User</button>
-    </div>
-    <div class="user-management-list field span2">
+      </div>
+      <div class="user-management-list">
       ${users.map(user => `
         <article class="user-management-item ${user.aktif === false ? 'is-inactive' : ''}">
           <div class="user-management-avatar">${escapeDashboardHtml(String(user.nama || user.username).charAt(0).toUpperCase())}</div>
@@ -800,13 +801,13 @@ function renderUserManagement() {
           </div>
         </article>
       `).join('')}
-    </div>
+      </div>
+    </section>
   `;
-  overlay.querySelector('.modal-footer').innerHTML = '<button class="btn btn-ghost" onclick="closeModal()">Tutup</button>';
-  overlay.classList.add('open');
 }
 
 function renderUserForm(id = '') {
+  if (!isSuperadmin()) return;
   const user = users.find(item => item.id === id) || {
     id: '',
     username: '',
@@ -831,7 +832,7 @@ function renderUserForm(id = '') {
     </select></div>
   `;
   overlay.querySelector('.modal-footer').innerHTML = `
-    <button class="btn btn-ghost" onclick="renderUserManagement()">Kembali</button>
+    <button class="btn btn-ghost" onclick="closeModal(); renderUserManagement()">Kembali</button>
     <button class="btn btn-submit" onclick="saveManagedUser('${escapeDashboardAttribute(id)}')">Simpan User</button>
   `;
   overlay.classList.add('open');
@@ -867,11 +868,13 @@ async function saveManagedUser(id) {
   if (!existing) users.push(user);
   await saveUserRecord(user);
   appendSystemAuditLog(existing ? 'MENGUBAH_USER' : 'MEMBUAT_USER', before, { ...user, password: undefined });
+  closeModal();
   renderUserManagement();
   showToast('User berhasil disimpan.');
 }
 
 async function toggleManagedUser(id) {
+  if (!isSuperadmin()) return;
   const user = users.find(item => item.id === id);
   if (!user || user.id === currentUser.id) {
     showToast('Akun yang sedang digunakan tidak dapat dinonaktifkan.', true);
@@ -885,6 +888,7 @@ async function toggleManagedUser(id) {
 }
 
 async function resetManagedPassword(id) {
+  if (!isSuperadmin()) return;
   const user = users.find(item => item.id === id);
   if (!user) return;
   const password = window.prompt('Masukkan password baru untuk ' + user.username + ':');
@@ -896,6 +900,15 @@ async function resetManagedPassword(id) {
 }
 
 function openAuditLog() {
+  if (!isSuperadmin()) {
+    showToast('Hanya Superadmin yang dapat melihat audit log.', true);
+    return;
+  }
+
+  setSidebarView('audit');
+}
+
+function renderAuditLog() {
   if (!isSuperadmin()) {
     showToast('Hanya Superadmin yang dapat melihat audit log.', true);
     return;
@@ -921,25 +934,27 @@ function openAuditLog() {
     RESET_PASSWORD_USER: 'Reset password user',
     MENGHAPUS_LAPORAN: 'Menghapus laporan'
   };
-  const overlay = document.getElementById('modal-overlay');
-  overlay.querySelector('.modal-head h2').textContent = 'Audit Log';
-  overlay.querySelector('.cat-tabs').innerHTML = '';
+  const container = document.getElementById('dashboard-container');
+  if (!container) return;
   window.dashboardAuditEntries = entries;
-  overlay.querySelector('.form-grid').innerHTML = entries.length
-    ? `<div class="field span2"><div class="audit-log-layout">
+  container.innerHTML = `
+    <section class="dashboard-page audit-page">
+      ${renderDashboardPageHeader('Audit Log', 'Riwayat perubahan dan aktivitas sistem')}
+      ${entries.length
+        ? `<div class="audit-log-layout">
         <div class="audit-log-list">${entries.map((log, index) => `
           <button type="button" class="audit-log-item ${index === 0 ? 'active' : ''}" onclick="selectAuditLog(${index})">
             <span class="audit-log-marker"></span>
             <span class="audit-log-content">
-              <span class="audit-log-topline"><strong>${escapeDashboardHtml(actionLabels[log.action] || log.action)}</strong><time>${escapeDashboardHtml(new Date(log.waktu).toLocaleString('id-ID'))}</time></span>
+              <span class="audit-log-topline"><strong>${escapeDashboardHtml(actionLabels[log.action] || log.action)}</strong><time>${escapeDashboardHtml(formatDeviceDate(log.waktu, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }))}</time></span>
               <span class="audit-log-meta">${escapeDashboardHtml(log.reportId || 'SISTEM')} · ${escapeDashboardHtml(log.username || '-')}</span>
             </span>
           </button>`).join('')}</div>
         <div class="audit-log-detail" id="audit-log-detail">${renderAuditLogDetail(entries[0], actionLabels)}</div>
-      </div></div>`
-    : '<div class="empty-state">Belum ada histori perubahan.</div>';
-  overlay.querySelector('.modal-footer').innerHTML = '<button class="btn btn-ghost" onclick="closeModal()">Tutup</button>';
-  overlay.classList.add('open');
+      </div>`
+        : '<div class="empty-state">Belum ada histori perubahan.</div>'}
+    </section>
+  `;
 }
 
 function selectAuditLog(index) {
@@ -967,7 +982,7 @@ function renderAuditLogDetail(entry, actionLabels) {
     <div class="audit-detail-heading">
       <span class="eyebrow">Detail aktivitas</span>
       <h3>${escapeDashboardHtml(actionLabels[entry.action] || entry.action)}</h3>
-      <p>${escapeDashboardHtml(entry.reportId || 'SISTEM')} · ${escapeDashboardHtml(entry.username || '-')} · ${escapeDashboardHtml(new Date(entry.waktu).toLocaleString('id-ID'))}</p>
+      <p>${escapeDashboardHtml(entry.reportId || 'SISTEM')} · ${escapeDashboardHtml(entry.username || '-')} · ${escapeDashboardHtml(formatDeviceDate(entry.waktu, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }))}</p>
     </div>
     <div class="audit-detail-section">
       <span>Sebelum perubahan</span>
