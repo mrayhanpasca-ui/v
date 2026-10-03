@@ -163,7 +163,7 @@ async function fetchGoogleSheetRequest(payload = {}) {
     params.set('data', JSON.stringify(payload.data));
   }
 
-  ['id', 'reportId', 'userId'].forEach(key => {
+  ['id', 'reportId', 'userId', 'username', 'password'].forEach(key => {
     if (payload[key] !== undefined && payload[key] !== null) {
       params.set(key, String(payload[key]));
     }
@@ -340,17 +340,21 @@ async function loadUsers() {
 }
 
 
-async function saveUserRecord(user) {
+async function saveUserRecord(user, isNew = false) {
 
   let savedUser;
 
-  try {
-    savedUser = await updateUser(user.id, user);
-  } catch (error) {
-    if (!String(error?.message || '').includes('USER_NOT_FOUND')) {
-      throw error;
-    }
+  if (isNew) {
     savedUser = await createUser(user);
+  } else {
+    try {
+      savedUser = await updateUser(user.id, user);
+    } catch (error) {
+      if (!String(error?.message || '').includes('USER_NOT_FOUND')) {
+        throw error;
+      }
+      savedUser = await createUser(user);
+    }
   }
 
   const index = users.findIndex(item => item.id === user.id);
@@ -458,19 +462,27 @@ async function waitForReportPersistence(
   minimumUpdatedAt = null
 ) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const savedReport = await getReportById(reportId);
-    const documentation = savedReport?.laporanAwal?.dokumentasi;
-    const documentationCount = Array.isArray(documentation) ? documentation.length : 0;
+    try {
+      const savedReport = await getReportById(reportId);
+      const documentation = savedReport?.laporanAwal?.dokumentasi;
+      const documentationCount = Array.isArray(documentation) ? documentation.length : 0;
 
-    if (
-      savedReport &&
-      (minimumDocumentationCount === null || documentationCount >= minimumDocumentationCount) &&
-      (!minimumUpdatedAt || String(savedReport.updatedAt || '') >= String(minimumUpdatedAt))
-    ) {
-      return savedReport;
+      if (
+        savedReport &&
+        (minimumDocumentationCount === null || documentationCount >= minimumDocumentationCount) &&
+        (!minimumUpdatedAt || String(savedReport.updatedAt || '') >= String(minimumUpdatedAt))
+      ) {
+        return savedReport;
+      }
+    } catch (error) {
+      if (!String(error?.message || '').includes('REPORT_NOT_FOUND')) {
+        throw error;
+      }
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (attempt < 2) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
   }
 
   return null;
@@ -683,29 +695,36 @@ async function uploadReportImages(reportId, files) {
 }
 
 
-async function saveReportRecord(report) {
+async function saveReportRecord(report, isNew = false) {
 
   const saveOperation = saveReportsQueue.then(async () => {
     let savedReport;
 
-    try {
-      savedReport = await updateReport(report.id, report);
-    } catch (error) {
-      if (!String(error?.message || '').includes('REPORT_NOT_FOUND')) {
-        throw error;
-      }
-    }
-
-    if (!savedReport) {
-      savedReport = await waitForReportPersistence(report.id, null, report.updatedAt);
-    }
-
-    if (!savedReport) {
+    if (isNew) {
       savedReport = await createReport(report);
-    }
+      if (!savedReport) {
+        savedReport = await waitForReportPersistence(report.id, null, report.updatedAt);
+      }
+    } else {
+      try {
+        savedReport = await updateReport(report.id, report);
+      } catch (error) {
+        if (!String(error?.message || '').includes('REPORT_NOT_FOUND')) {
+          throw error;
+        }
+      }
 
-    if (!savedReport) {
-      savedReport = await waitForReportPersistence(report.id, null, report.updatedAt);
+      if (!savedReport) {
+        savedReport = await waitForReportPersistence(report.id, null, report.updatedAt);
+      }
+
+      if (!savedReport) {
+        savedReport = await createReport(report);
+      }
+
+      if (!savedReport) {
+        savedReport = await waitForReportPersistence(report.id, null, report.updatedAt);
+      }
     }
 
     const index = reports.findIndex(item => item.id === report.id);
@@ -714,10 +733,7 @@ async function saveReportRecord(report) {
     }
 
     if (!savedReport) {
-      savedReport = await waitForReportPersistence(report.id);
-      if (!savedReport) {
-        throw new Error('Server belum mengonfirmasi penyimpanan laporan. Silakan coba lagi.');
-      }
+      throw new Error('Server belum mengonfirmasi penyimpanan laporan. Silakan coba lagi.');
     }
 
     saveDashboardDataCache();

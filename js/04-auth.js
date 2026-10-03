@@ -311,6 +311,29 @@ function showLoginScreen() {
 
   }
 
+  closeLoginPanel();
+
+}
+
+
+function openLoginPanel() {
+  const panel = document.getElementById('login-panel');
+  const loginScreen = document.getElementById('login-screen');
+  if (!panel || !loginScreen) return;
+
+  panel.hidden = false;
+  loginScreen.classList.add('login-panel-open');
+  document.getElementById('input-username')?.focus();
+}
+
+
+function closeLoginPanel() {
+  const panel = document.getElementById('login-panel');
+  const loginScreen = document.getElementById('login-screen');
+  if (!panel || !loginScreen) return;
+
+  panel.hidden = true;
+  loginScreen.classList.remove('login-panel-open');
 }
 
 
@@ -872,24 +895,6 @@ async function initializeAuth() {
 
   }
 
-}
-
-
-async function initializeDatabaseOnStartup() {
-
-  showDatabaseLoading(
-    'Menyiapkan database',
-    'Memastikan database siap sebelum login...'
-  );
-
-  try {
-    await fetchJsonFromGoogleSheet({
-      action: 'initializeDatabase'
-    });
-  }
-  catch (error) {
-    console.error('Gagal menyiapkan database:', error);
-  }
 }
 
 

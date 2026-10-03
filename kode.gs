@@ -1749,8 +1749,13 @@ function createReport(report, context) {
       deletedAt: '',
       deletedBy: ''
     });
-    if (!value.kategori || !value.deskripsiLokasi) {
-      throw new Error('Kategori dan deskripsi lokasi wajib diisi.');
+    const location = input.laporanAwal && input.laporanAwal.lokasi || {};
+    const locationAddress = String(
+      location.alamat || location.alamatAsli || location.inputAsli || ''
+    ).trim();
+
+    if (!value.kategori || !locationAddress) {
+      throw new Error('Kategori dan lokasi laporan wajib diisi.');
     }
 
     if (findRowById(sheet, reportId, 'id')) {
@@ -2075,50 +2080,50 @@ function getUsersFromSheet() {
     return {
 
       id:
-        row.id ||
         raw.id ||
+        row.id ||
         '',
 
       username:
-        row.username ||
         raw.username ||
+        row.username ||
         '',
 
       password:
-        row.password ||
         raw.password ||
+        row.password ||
         '',
 
       nama:
-        row.nama ||
         raw.nama ||
+        row.nama ||
         '',
 
       jabatan:
-        row.jabatan ||
         raw.jabatan ||
+        row.jabatan ||
         '',
 
       role:
-        row.role ||
         raw.role ||
+        row.role ||
         'PETUGAS',
 
       unit:
-        row.unit ||
         raw.unit ||
+        row.unit ||
         '',
 
       aktif:
         normalizeBoolean(
-          row.aktif !== undefined
-            ? row.aktif
-            : raw.aktif
+          raw.aktif !== undefined
+            ? raw.aktif
+            : row.aktif
         ),
 
       createdAt:
-        row.createdAt ||
         raw.createdAt ||
+        row.createdAt ||
         ''
 
     };
@@ -2255,6 +2260,13 @@ function getReportsFromSheet() {
   const documentationByReportId =
     getDocumentationByReportId();
 
+  const locationsByReportId = new Map();
+  readSheetRows(SHEET_NAMES.LOKASI).forEach(function (location) {
+    const reportId = String(location.reportId || '').trim();
+    if (reportId) {
+      locationsByReportId.set(reportId, location);
+    }
+  });
 
   return rows.map(function (row) {
 
@@ -2286,6 +2298,7 @@ function getReportsFromSheet() {
     }
 
 
+    const reportId = String(row.id || raw.id || '').trim();
     const laporanAwal =
       raw.laporanAwal || {
 
@@ -2306,9 +2319,23 @@ function getReportsFromSheet() {
 
       };
 
+    const rawLocation = laporanAwal.lokasi || {};
+    const savedLocation = locationsByReportId.get(reportId) || {};
+    const mergedLocation = Object.assign({}, savedLocation);
+    Object.keys(rawLocation).forEach(function (key) {
+      const value = rawLocation[key];
+      if (value !== '' && value !== null && typeof value !== 'undefined') {
+        mergedLocation[key] = value;
+      }
+    });
+
+    const hydratedLaporanAwal = {
+      ...laporanAwal,
+      lokasi: mergedLocation
+    };
 
     const savedDocumentation =
-      documentationByReportId[String(row.id || raw.id || '').trim()] ||
+      documentationByReportId[reportId] ||
       [];
 
     const existingDocumentation =
@@ -2346,17 +2373,15 @@ function getReportsFromSheet() {
 
     pelaksanaan.dokumentasi = documentation;
 
-    const hydratedLaporanAwal = {
-      ...laporanAwal,
+    const hydratedLaporanAwalWithDocumentation = {
+      ...hydratedLaporanAwal,
       dokumentasi: documentation
     };
 
     return {
 
       id:
-        row.id ||
-        raw.id ||
-        '',
+        reportId,
 
       status:
         row.status ||
@@ -2384,7 +2409,7 @@ function getReportsFromSheet() {
         '',
 
       laporanAwal:
-        hydratedLaporanAwal,
+        hydratedLaporanAwalWithDocumentation,
 
       pelaksanaan:
         pelaksanaan,
@@ -2844,37 +2869,11 @@ function findUserByUsername(username) {
     return null;
   }
 
-  const sheet = getRequiredSheet(SHEET_NAMES.USERS, USERS_HEADERS);
-  const indexes = getColumnIndexes(sheet);
-  const usernameIndex = indexes.username;
+  const users = getUsersFromSheet();
 
-  if (typeof usernameIndex === 'undefined' || sheet.getLastRow() <= 1) {
-    return null;
-  }
-
-  const matches = sheet
-    .getRange(2, usernameIndex + 1, sheet.getLastRow() - 1, 1)
-    .getValues();
-
-  for (let index = 0; index < matches.length; index++) {
-    if (String(matches[index][0] || '').trim().toLowerCase() !== normalizedUsername) {
-      continue;
-    }
-
-    const rowNumber = index + 2;
-    const values = sheet
-      .getRange(rowNumber, 1, 1, sheet.getLastColumn())
-      .getValues()[0];
-    const object = {};
-
-    Object.keys(indexes).forEach(function (key) {
-      object[key] = values[indexes[key]];
-    });
-
-    return parseUserSheetObject(object);
-  }
-
-  return null;
+  return users.find(function (user) {
+    return String(user.username || '').trim().toLowerCase() === normalizedUsername;
+  }) || null;
 }
 
 

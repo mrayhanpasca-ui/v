@@ -76,85 +76,18 @@
        LOGIN
   ====================================================== -->
 
-  <div id="login-screen" inert>
+  <div id="login-screen" class="login-screen" inert>
+    <video class="login-background-video" autoplay muted loop playsinline aria-hidden="true">
+      <source src="sikompak.mp4" type="video/mp4">
+    </video>
+    <div class="login-video-wash" aria-hidden="true"></div>
 
-
-    <!-- ================= LOGIN SIDE ================= -->
-
-    <div class="login-side">
-
-      <div class="eyebrow">
-        Sistem Rekap Terpadu
-      </div>
-
-
-      <h1>
-        <img class="login-brand-logo" src="b7879c7f-dc75-44df-a304-e9762936128c.png" alt="SIKOMPAK">
-        <span class="b">Satpol PP &amp; Damkar</span>
-      </h1>
-
-
-      <p class="desc">
-
-        Satu portal untuk mencatat dan merangkum
-        seluruh laporan lapangan dari dua sektor:
-        Ketertiban Umum (Satpol PP) dan
-        Pemadam Kebakaran (Damkar).
-
-      </p>
-
-
-      <div class="sector-tags">
-
-
-        <div class="sector-tag">
-
-          <span
-            class="dot"
-            style="background:#315A91"
-          ></span>
-
-          Pengendalian & Penegakan
-
-        </div>
-
-
-        <div class="sector-tag">
-
-          <span
-            class="dot"
-            style="background:#E12D24"
-          ></span>
-
-          Pemadaman & Penyelamatan
-
-        </div>
-
-
-      </div>
-
-    </div>
-
-
-    <!-- ================= LOGIN FORM ================= -->
-
-    <div class="login-form-side">
-
-
+    <section class="login-form-side" id="login-panel" aria-label="Form login" hidden>
       <div class="login-card">
-
-
-        <h2>
-          Login
-        </h2>
-
-
-        <div class="sub">
-
-          Login untuk mengakses
-          dasbor laporan.
-
-        </div>
+        <button class="login-panel-close" type="button" onclick="closeLoginPanel()" aria-label="Tutup form login" title="Tutup">×</button>
+        <img class="login-brand-logo" src="b7879c7f-dc75-44df-a304-e9762936128c.png" alt="SIKOMPAK">
+        <h2>Login</h2>
+        <div class="sub">Masuk untuk mengakses dasbor laporan.</div>
 
 
         <div
@@ -255,29 +188,17 @@
         </button>
 
 
-        <!-- LOGIN DEMO -->
-
         <div class="login-hint">
-
-          Demo login —
-
-          username:
-          <b>admin</b>
-
-          ·
-
-          password:
-          <b>admin123</b>
-
+          Gunakan username dan password yang terdaftar di database SIKOMPAK.
         </div>
 
 
       </div>
+    </section>
 
-
-    </div>
-
-
+    <button class="login-launch-button" type="button" onclick="openLoginPanel()">
+      Login <span aria-hidden="true">→</span>
+    </button>
   </div>
 
 

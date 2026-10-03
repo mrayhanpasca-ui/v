@@ -15,10 +15,16 @@ let currentStatusFilter = 'semua';
 let currentSort = 'terbaru';
 let currentGroup = 'none';
 let currentAppView = 'dashboard';
+let reportDetailEditMode = false;
+let reportDetailEditBaseline = '';
 let dashboardChartReports = [];
 let dashboardSelectedMonth = '';
 let dashboardLeafletMap = null;
 let dashboardLeafletLayer = null;
+let dashboardMapRenderSequence = 0;
+let dashboardVillageGeocodeQueue = Promise.resolve();
+let dashboardVillageGeocodeLastStartedAt = 0;
+const dashboardVillageGeocodeCache = new Map();
 
 const DEFAULT_ROUTE = '#/dashboard';
 const REPORT_DETAIL_ROUTE = '#/detail-laporan/';
@@ -363,7 +369,7 @@ function renderDashboardMonitoring(data) {
       <article class="monitoring-card regional-chart-card">
         <div class="monitoring-card-header"><div><h2>Sebaran Kasus</h2><p id="regional-chart-summary">Kasus menurut wilayah untuk bulan terpilih</p></div><span class="chart-map-key"><i></i>Jumlah kasus</span></div>
         <div id="regional-reports-map" class="regional-reports-map" role="img" aria-label="Peta titik laporan per wilayah"></div>
-        <div id="regional-chart-empty" class="chart-empty" hidden>Belum ada laporan dengan koordinat pada bulan ini.</div>
+        <div id="regional-chart-empty" class="chart-empty" hidden>Belum ada titik wilayah pada bulan ini.</div>
       </article>
       <article class="monitoring-card type-chart-card">
         <div class="monitoring-card-header"><div><h2>Kasus per Jenis</h2><p>Komposisi laporan untuk bulan terpilih</p></div></div>
@@ -437,7 +443,16 @@ function renderDashboardVisualizations() {
   }
 
   renderReportTypePie(monthReports, typeContainer, legendContainer);
-  renderRegionalReportMap(monthReports);
+  renderRegionalReportMap(monthReports).catch(error => {
+    console.error('Peta sebaran laporan gagal ditampilkan:', error);
+    const summary = document.getElementById('regional-chart-summary');
+    const empty = document.getElementById('regional-chart-empty');
+    if (summary) summary.textContent = 'Peta gagal menampilkan titik wilayah.';
+    if (empty) {
+      empty.hidden = false;
+      empty.textContent = 'Peta gagal dimuat. Periksa koneksi dan coba lagi.';
+    }
+  });
 }
 
 
@@ -468,7 +483,7 @@ function renderDailyReportSvg(counts, monthLabel) {
     const dayLabel = index === 0 || (index + 1) % 5 === 0 || index === counts.length - 1
       ? `<text class="daily-chart-day" x="${x + barWidth / 2}" y="${height - 12}" text-anchor="middle">${index + 1}</text>`
       : '';
-    return `<g class="daily-chart-bar-group"><title>${escapeDashboardHtml(label)}</title><rect class="daily-chart-bar ${value ? 'has-value' : ''}" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="${Math.min(4, barWidth / 2)}"/><rect class="daily-chart-hit-area" x="${left + index * step}" y="${top}" width="${step}" height="${chartHeight}"/>${dayLabel}</g>`;
+    return `<g class="daily-chart-bar-group"><rect class="daily-chart-bar ${value ? 'has-value' : ''}" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="${Math.min(4, barWidth / 2)}"/><rect class="daily-chart-hit-area" x="${left + index * step}" y="${top}" width="${step}" height="${chartHeight}" aria-label="${escapeDashboardAttribute(label)}"><title>${escapeDashboardHtml(label)}</title></rect>${dayLabel}</g>`;
   }).join('');
 
   return `<svg class="daily-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Jumlah laporan harian untuk ${escapeDashboardAttribute(monthLabel)}">${grid}${bars}</svg>`;
@@ -514,55 +529,227 @@ function renderReportTypePie(reportsForMonth, chartContainer, legendContainer) {
 }
 
 
-function getDashboardCoordinates(report) {
-  const location = report?.laporanAwal?.lokasi || {};
-  const rawLatitude = location.latitude ?? location.lat;
-  const rawLongitude = location.longitude ?? location.lng ?? location.lon;
-  let latitude = rawLatitude === '' || rawLatitude == null ? Number.NaN : Number(rawLatitude);
-  let longitude = rawLongitude === '' || rawLongitude == null ? Number.NaN : Number(rawLongitude);
-
-  if ((!Number.isFinite(latitude) || !Number.isFinite(longitude)) && typeof extractLatLng === 'function') {
-    const parsed = extractLatLng(location.googleMapsUrl || location.mapsUrl || location.alamat || location.inputAsli || '');
-    if (parsed) {
-      latitude = parsed.lat;
-      longitude = parsed.lng;
-    }
-  }
-
-  return Number.isFinite(latitude) && Number.isFinite(longitude) &&
-    Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
-    ? { latitude, longitude }
-    : null;
+function normalizeDashboardRegionName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('id-ID')
+    .replace(/\b(kabupaten|kab\.?|kota|kec\.?|kecamatan|kel\.?|kelurahan|desa)\b/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
 }
 
 
-function renderRegionalReportMap(reportsForMonth) {
+function getDashboardReportRegion(report) {
+  const location = report?.laporanAwal?.lokasi || {};
+  const address = location.alamat || location.alamatAsli || location.inputAsli || '';
+  let desaKelurahan = location.desaKelurahan || location.kelurahan || location.desa || '';
+  let kecamatan = location.kecamatan || '';
+  const kodePos = String(location.kodePos || '').trim();
+
+  if ((!desaKelurahan || !kecamatan) && address && typeof matchMasterRegionInAddress === 'function') {
+    const matchedRegion = matchMasterRegionInAddress(address);
+    if (matchedRegion?.matched) {
+      desaKelurahan = desaKelurahan || matchedRegion.desaKelurahan || matchedRegion.kelurahan || '';
+      kecamatan = kecamatan || matchedRegion.kecamatan || '';
+    }
+  }
+
+  const masterMatches = desaKelurahan
+    ? (Array.isArray(masterWilayah) ? masterWilayah : [])
+    .filter(row =>
+      (!row.kabupaten ||
+        normalizeDashboardRegionName(row.kabupaten) === normalizeDashboardRegionName(SYSTEM_REGION.kabupaten)) &&
+      normalizeDashboardRegionName(row.desaKelurahan) === normalizeDashboardRegionName(desaKelurahan) &&
+      (!kecamatan ||
+        normalizeDashboardRegionName(row.kecamatan) === normalizeDashboardRegionName(kecamatan))
+    )
+    : [];
+  const postalCodeMatches = kodePos
+    ? masterMatches.filter(row => String(row.kodePos || '').trim() === kodePos)
+    : [];
+  const masterRegion = postalCodeMatches.length === 1
+    ? postalCodeMatches[0]
+    : masterMatches.length === 1
+      ? masterMatches[0]
+      : null;
+  desaKelurahan = masterRegion?.desaKelurahan || desaKelurahan;
+  kecamatan = masterRegion?.kecamatan || kecamatan;
+  const kabupaten = masterRegion?.kabupaten || SYSTEM_REGION.kabupaten;
+  if (!desaKelurahan) return null;
+
+  const name = desaKelurahan;
+  const key = masterRegion?.id
+    ? `master:${String(masterRegion.id).trim()}`
+    : `${normalizeDashboardRegionName(desaKelurahan)}|${normalizeDashboardRegionName(kecamatan)}`;
+  const villageQuery = [
+    desaKelurahan,
+    'Kotabaru',
+    SYSTEM_REGION.provinsi,
+    'Indonesia'
+  ].filter(Boolean).join(', ');
+
+  return {
+    key,
+    name,
+    desaKelurahan,
+    kecamatan,
+    kabupaten,
+    villageQuery
+  };
+}
+
+
+function geocodeDashboardVillage(region) {
+  if (dashboardVillageGeocodeCache.has(region.key)) {
+    return dashboardVillageGeocodeCache.get(region.key);
+  }
+
+  const geocoding = dashboardVillageGeocodeQueue.then(async () => {
+    const wait = Math.max(0, 1100 - (Date.now() - dashboardVillageGeocodeLastStartedAt));
+    if (wait) await new Promise(resolve => window.setTimeout(resolve, wait));
+    dashboardVillageGeocodeLastStartedAt = Date.now();
+
+    if (!region.villageQuery) return null;
+
+    let response;
+    try {
+      response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=10&countrycodes=id&accept-language=id&q=${encodeURIComponent(region.villageQuery)}`,
+        { headers: { 'Accept-Language': 'id-ID' } }
+      );
+      if (!response.ok) {
+        throw new Error(`Pencarian titik desa gagal (HTTP ${response.status}).`);
+      }
+    } catch (error) {
+      console.error(`Gagal mencari titik pusat desa/kelurahan ${region.name}:`, error);
+      dashboardVillageGeocodeCache.delete(region.key);
+      return null;
+    }
+
+    let results;
+    try {
+      results = await response.json();
+    } catch (error) {
+      console.error(`Respons pencarian titik desa ${region.name} tidak valid:`, error);
+      dashboardVillageGeocodeCache.delete(region.key);
+      return null;
+    }
+    if (!Array.isArray(results)) {
+      dashboardVillageGeocodeCache.delete(region.key);
+      return null;
+    }
+
+    const villageName = normalizeDashboardRegionName(region.desaKelurahan);
+    const countyName = normalizeDashboardRegionName(SYSTEM_REGION.kabupaten);
+    const provinceName = normalizeDashboardRegionName(SYSTEM_REGION.provinsi);
+    const result = results.find(candidate => {
+      const address = candidate.address || {};
+      const candidateNames = [
+        candidate.name,
+        address.village,
+        address.hamlet,
+        address.suburb,
+        address.city_district,
+        address.town,
+        address.municipality
+      ].map(normalizeDashboardRegionName).filter(Boolean);
+      const county = normalizeDashboardRegionName(
+        address.county || address.municipality || address.city_district || ''
+      );
+      const province = normalizeDashboardRegionName(address.state || '');
+      return candidateNames.includes(villageName) &&
+        county === countyName &&
+        province === provinceName;
+    });
+    const latitude = Number(result?.lat);
+    const longitude = Number(result?.lon);
+    if (result && Number.isFinite(latitude) && Number.isFinite(longitude) &&
+      Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
+      return { latitude, longitude, precision: 'desa' };
+    }
+
+    dashboardVillageGeocodeCache.delete(region.key);
+    return null;
+  });
+
+  dashboardVillageGeocodeQueue = geocoding.then(
+    () => undefined,
+    () => undefined
+  );
+  dashboardVillageGeocodeCache.set(region.key, geocoding);
+  return geocoding;
+}
+
+
+async function renderRegionalReportMap(reportsForMonth) {
   const mapElement = document.getElementById('regional-reports-map');
   const emptyElement = document.getElementById('regional-chart-empty');
   if (!mapElement || !emptyElement) return;
 
+  const renderSequence = ++dashboardMapRenderSequence;
   const grouped = new Map();
   reportsForMonth.forEach(report => {
-    const coordinates = getDashboardCoordinates(report);
-    if (!coordinates) return;
-
-    const location = report?.laporanAwal?.lokasi || {};
-    const region = location.kecamatan || location.desaKelurahan || location.kelurahan ||
-      location.kabupaten || `Area ${coordinates.latitude.toFixed(3)}, ${coordinates.longitude.toFixed(3)}`;
-    const key = String(region).trim().toLocaleLowerCase('id-ID');
-    const group = grouped.get(key) || { name: String(region).trim(), count: 0, latitude: 0, longitude: 0 };
+    const region = getDashboardReportRegion(report);
+    if (!region) return;
+    const key = `region:${region.key}`;
+    const group = grouped.get(key) || {
+      name: region.name,
+      region: region.kecamatan,
+      regionQuery: region,
+      count: 0,
+      coordinates: null,
+      reportIds: []
+    };
     group.count += 1;
-    group.latitude += coordinates.latitude;
-    group.longitude += coordinates.longitude;
+    if (report?.id) group.reportIds.push(String(report.id));
     grouped.set(key, group);
   });
 
-  const locations = [...grouped.values()].map(group => ({
-    ...group,
-    latitude: group.latitude / group.count,
-    longitude: group.longitude / group.count
+  const unresolvedGroups = [...grouped.values()];
+  const summary = document.getElementById('regional-chart-summary');
+  if (summary) summary.textContent = unresolvedGroups.length
+    ? `Mencari titik pusat ${unresolvedGroups.length} desa/kelurahan di Kabupaten Kotabaru...`
+    : 'Menyiapkan titik desa/kelurahan...';
+
+  const geocodeResults = await Promise.all(unresolvedGroups.map(async group => {
+    try {
+      return [group, await geocodeDashboardVillage(group.regionQuery)];
+    } catch (error) {
+      console.error('Gagal mencari titik wilayah dashboard:', error);
+      return [group, null];
+    }
   }));
+  if (renderSequence !== dashboardMapRenderSequence) return;
+
+  geocodeResults.forEach(([group, coordinates]) => {
+    group.coordinates = coordinates;
+  });
+
+  const mappedLocations = [...grouped.values()]
+    .filter(group => group.coordinates)
+    .map(group => ({
+      ...group,
+      latitude: group.coordinates.latitude,
+      longitude: group.coordinates.longitude,
+      precision: group.coordinates.precision
+    }));
+  const locations = mappedLocations;
+  const reportsMapped = locations.reduce((total, location) => total + location.count, 0);
+  const reportsWithoutVillage = reportsForMonth.length - [...grouped.values()]
+    .reduce((total, group) => total + group.count, 0);
+  const reportsWithoutPoint = reportsForMonth.length - reportsMapped;
+  if (summary) {
+    summary.textContent = `${locations.length} titik desa/kelurahan · ${reportsMapped} laporan terpetakan` +
+      (reportsWithoutVillage ? ` · ${reportsWithoutVillage} belum memiliki data desa/kelurahan` : '') +
+      (reportsWithoutPoint > reportsWithoutVillage
+        ? ` · ${reportsWithoutPoint - reportsWithoutVillage} titik desa belum ditemukan`
+        : '');
+  }
   emptyElement.hidden = locations.length > 0;
+  emptyElement.textContent = reportsForMonth.length
+    ? 'Titik pusat desa/kelurahan belum ditemukan. Pastikan nama desa dan kecamatan terisi.'
+    : 'Belum ada laporan pada bulan ini.';
   mapElement.classList.toggle('is-empty', locations.length === 0);
 
   if (!window.L) {
@@ -587,8 +774,17 @@ function renderRegionalReportMap(reportsForMonth) {
     locations.forEach(location => {
       const point = [location.latitude, location.longitude];
       bounds.push(point);
-      const radius = Math.min(22, 8 + Math.sqrt(location.count) * 4);
-      const tooltip = `<strong>${escapeDashboardHtml(location.name)}</strong><br>${location.count} ${location.count === 1 ? 'kasus' : 'kasus'}`;
+      const radius = Math.min(18, 5 + Math.sqrt(location.count) * 2.5);
+      const region = location.region && location.region !== location.name
+        ? `<br>${escapeDashboardHtml(location.region)}`
+        : '';
+      const reportIds = location.reportIds.length
+        ? `<br><small>${location.reportIds.map(escapeDashboardHtml).join(', ')}</small>`
+        : '';
+      const precisionLabel = location.precision === 'desa'
+        ? '<br><small>Titik pusat desa/kelurahan</small>'
+        : '';
+      const tooltip = `<strong>${escapeDashboardHtml(location.name)}</strong>${region}<br>${location.count} laporan${precisionLabel}${reportIds}`;
       L.circleMarker(point, {
         radius,
         color: '#fff',
@@ -599,7 +795,7 @@ function renderRegionalReportMap(reportsForMonth) {
         .bindPopup(tooltip)
         .addTo(dashboardLeafletLayer);
     });
-    dashboardLeafletMap.fitBounds(bounds, { padding: [24, 24], maxZoom: 12 });
+    dashboardLeafletMap.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
   } else {
     dashboardLeafletMap.setView([-3.25, 116.2], 8);
   }
@@ -665,6 +861,10 @@ function applyView() {
   }
 
   currentAppView = route.view;
+  if (route.view !== 'report-detail') {
+    reportDetailEditMode = false;
+    reportDetailEditBaseline = '';
+  }
   const routeContainers = new Set(Object.values(ROUTES).map(item => item.container));
   routeContainers.forEach(containerId => {
     const element = document.getElementById(containerId);
@@ -684,6 +884,9 @@ function applyView() {
   });
 
   route.render(routeParams);
+  reportDetailEditBaseline = route.view === 'report-detail' && reportDetailEditMode
+    ? captureReportDetailEditState()
+    : '';
   window.scrollTo({ top: 0 });
 }
 
@@ -707,6 +910,33 @@ function setSidebarView(view, routeId = '') {
     history.pushState({ appView: route.view }, '', routeHash);
   }
   applyView();
+}
+
+
+function setReportDetailEditMode(enabled) {
+  if (enabled && !canEditReport() && !canFillPelaksanaan()) return;
+  reportDetailEditMode = Boolean(enabled);
+  if (currentAppView === 'report-detail') applyView();
+  else reportDetailEditBaseline = '';
+}
+
+
+function captureReportDetailEditState() {
+  const fields = document.querySelectorAll('.report-detail-page input, .report-detail-page select, .report-detail-page textarea');
+  return JSON.stringify(Array.from(fields, field => ({
+    id: field.id || '',
+    type: field.type || field.tagName,
+    value: field.type === 'file' ? '' : field.value,
+    checked: field.type === 'checkbox' ? field.checked : undefined,
+    selected: field.tagName === 'SELECT' && field.multiple
+      ? Array.from(field.selectedOptions || [], option => option.value)
+      : undefined,
+    files: field.type === 'file'
+      ? Array.from(field.files || [], file => [file.name, file.size, file.lastModified])
+      : undefined,
+    coordinates: field.id === 'f-lokasi' ? field.dataset.koordinat || '' : undefined,
+    mapsUrl: field.id === 'f-lokasi' ? field.dataset.maps || '' : undefined
+  })));
 }
 
 
@@ -797,7 +1027,6 @@ function renderReportDetailPage(reportId) {
   }
 
   const initial = report.laporanAwal || {};
-  const location = initial.lokasi || {};
   const activities = Array.isArray(report.auditLog)
     ? report.auditLog.slice().sort((left, right) => String(left.waktu || '').localeCompare(String(right.waktu || '')))
     : [];
@@ -808,16 +1037,8 @@ function renderReportDetailPage(reportId) {
     MEMBUAT_USER: 'Pengguna dibuat',
     MENGHAPUS_LAPORAN: 'Laporan dihapus'
   };
-  const date = initial.waktuLaporanMasuk || report.createdAt || report.updatedAt;
-  const dateLabel = date
-    ? formatDeviceDate(date, { day: '2-digit', month: 'long', year: 'numeric' })
-    : '-';
-  const timeLabel = initial.jam || initial.waktu || (date
-    ? formatDeviceDate(date, { hour: '2-digit', minute: '2-digit' })
-    : '-');
-  const description = initial.deskripsiKejadian || initial.deskripsi || initial.keterangan || report.laporanDetail?.kronologi || '';
-  const assignedPetugas = getAssignedPetugasNames(report);
-  const photoMarkup = renderReportDocumentationImages(report) || '<div class="report-photo-empty">Belum ada foto dokumentasi.</div>';
+  const isEditor = canEditReport() && reportDetailEditMode;
+  const isPetugasEditing = isPetugas() && reportDetailEditMode;
 
   container.innerHTML = `
     <section class="dashboard-page report-detail-page">
@@ -826,17 +1047,16 @@ function renderReportDetailPage(reportId) {
           <div class="report-detail-heading-line">
             <button class="report-detail-back" type="button" onclick="setSidebarView('reports')" aria-label="Kembali ke laporan" title="Kembali ke laporan">←</button>
             <h1>${escapeDashboardHtml(report.id || 'Detail Laporan')}</h1>
-            <span class="status-badge ${getDashboardStatusClass(getReportStatus(report))}">${escapeDashboardHtml(getStatusLabelSafe(getReportStatus(report)))}</span>
+            ${!isEditor ? `<span class="status-badge ${getDashboardStatusClass(getReportStatus(report))}">${escapeDashboardHtml(getStatusLabelSafe(getReportStatus(report)))}</span>` : ''}
             <span class="report-priority-badge">${escapeDashboardHtml(report.prioritas || initial.prioritas || 'Normal')}</span>
           </div>
           <p>${escapeDashboardHtml(initial.judul || getReportType(report))}</p>
         </div>
         <div class="report-detail-actions">
-          ${isPetugas() ? `<button class="btn btn-submit" type="button" onclick="openPetugasTaskForm('${escapeDashboardAttribute(report.id)}')">Buka Form Pelaksanaan</button>` : ''}
+          ${canEditReport() && !isEditor ? `<button class="btn btn-submit" type="button" onclick="setReportDetailEditMode(true)">Kelola Laporan</button>` : ''}
+          ${isPetugas() && !isPetugasEditing ? `<button class="btn btn-submit" type="button" onclick="openPetugasTaskForm('${escapeDashboardAttribute(report.id)}')">Edit Pelaksanaan</button>` : ''}
         </div>
       </div>
-
-      ${canEditReport() ? '<section id="report-inline-edit" class="reports-panel report-inline-edit"></section>' : ''}
 
       <section class="reports-panel report-progress-panel">
         <div class="report-section-title"><span></span><h2>Progress Penanganan</h2></div>
@@ -845,51 +1065,10 @@ function renderReportDetailPage(reportId) {
 
       <div class="report-detail-layout">
         <div class="report-detail-main">
-          <section class="reports-panel report-info-panel">
-            <div class="report-section-title"><span></span><h2>Informasi Laporan</h2></div>
-            <div class="report-summary-grid">
-              ${renderReportInfoItem('ID Laporan', report.id, true)}
-              ${renderReportInfoItem('Jenis Kejadian', getReportType(report))}
-              ${renderReportInfoItem('Instansi', getUnitLabel(initial.unit || CATEGORY_CONFIG[initial.jenisLaporan || report.kategori]?.unit) || getReportSector(report))}
-              ${renderReportInfoItem('Tanggal', dateLabel)}
-              ${renderReportInfoItem('Waktu', timeLabel)}
-              ${renderReportInfoItem('Dibuat Oleh', report.createdBy || initial.createdBy || initial.username || '-')}
-            </div>
-          </section>
-
-          <section class="reports-panel report-description-panel">
-            <div class="report-section-title"><span></span><h2>Deskripsi Kejadian</h2></div>
-            <p>${escapeDashboardHtml(description || 'Deskripsi kejadian belum tersedia.')}</p>
-          </section>
-
-          <section class="reports-panel report-location-panel">
-            <div class="report-section-title is-location"><span></span><h2>Lokasi Kejadian</h2></div>
-            <p class="report-location-address">${escapeDashboardHtml(location.alamat || location.inputAsli || 'Lokasi belum diisi')}</p>
-            ${[location.kelurahan, location.kecamatan, location.kabupaten].filter(Boolean).length
-              ? `<p class="report-location-meta">${escapeDashboardHtml([location.kelurahan, location.kecamatan, location.kabupaten].filter(Boolean).join(', '))}</p>`
-              : ''}
-            ${(location.mapsUrl || location.googleMapsUrl)
-              ? `<a class="report-map-link" href="${escapeDashboardAttribute(location.mapsUrl || location.googleMapsUrl)}" target="_blank" rel="noopener noreferrer">Buka Google Maps ↗</a>`
-              : ''}
-          </section>
-
-          <section class="reports-panel report-photos-panel">
-            <div class="report-section-title is-photo"><span></span><h2>Foto Bukti</h2></div>
-            ${photoMarkup}
-          </section>
+          ${isEditor ? adminEditForm(report, initial.lokasi || {}, report.laporanDetail || {}) : renderReportReadOnlySections(report, isPetugasEditing)}
         </div>
 
         <aside class="report-detail-aside">
-          <section class="reports-panel report-status-panel">
-            <div class="report-section-title"><span></span><h2>Status &amp; Penugasan</h2></div>
-            <dl>
-              <div><dt>Status Laporan</dt><dd><span class="status-badge ${getDashboardStatusClass(getReportStatus(report))}">${escapeDashboardHtml(getStatusLabelSafe(getReportStatus(report)))}</span></dd></div>
-              <div><dt>Prioritas</dt><dd><span class="report-priority-badge">${escapeDashboardHtml(report.prioritas || initial.prioritas || 'Normal')}</span></dd></div>
-              <div><dt>Instansi</dt><dd><span class="report-unit-badge">${escapeDashboardHtml(getUnitLabel(initial.unit || CATEGORY_CONFIG[initial.jenisLaporan || report.kategori]?.unit) || getReportSector(report))}</span></dd></div>
-              ${assignedPetugas !== 'Belum ditugaskan' ? `<div><dt>Petugas</dt><dd>${escapeDashboardHtml(assignedPetugas)}</dd></div>` : '<div><dt>Petugas</dt><dd>Belum ditugaskan</dd></div>'}
-            </dl>
-          </section>
-
           <section class="reports-panel report-timeline-panel">
             <div class="report-section-title"><span></span><h2>Timeline Aktivitas</h2></div>
             ${activities.length
@@ -900,17 +1079,179 @@ function renderReportDetailPage(reportId) {
                 </div>`).join('')}</div>`
               : '<p class="report-timeline-empty">Belum ada aktivitas tambahan.</p>'}
           </section>
+          ${renderReportPhotosSection(report, isEditor, isPetugasEditing)}
         </aside>
       </div>
     </section>
   `;
+}
 
-  if (canEditReport()) renderAdminReportEditor(report);
+
+function renderReportReadOnlySections(report, isPetugasEditing = false) {
+  const initial = report.laporanAwal || {};
+  const detail = report.laporanDetail || {};
+  const implementation = report.pelaksanaan || {};
+  const reportTimestamp = initial.waktuLaporanMasuk || report.createdAt;
+  const category = CATEGORY_CONFIG[initial.jenisLaporan || report.kategori] || { fields: [] };
+  const infoKeys = ['tanggal', 'jenisKegiatan', 'jenisPelanggaran', 'jenisKebakaran', 'jenisKejadian'];
+  const assignmentKeys = ['anggota', 'pemimpinRegu', 'jumlahPersonel'];
+  const documentationFields = category.fields.filter(field => field.type === 'images');
+  const documentationKeys = documentationFields.map(field => field.key);
+  const initialFields = category.fields.filter(field =>
+    !infoKeys.includes(field.key) && !assignmentKeys.includes(field.key) && field.type !== 'images'
+  );
+  const readOnlyCategoryFields = fields => fields.map(field => renderReportReadOnlyField(report, field)).filter(Boolean).join('');
+
+  return `
+    <section class="reports-panel report-info-panel">
+      <div class="report-section-title"><span></span><h2>Informasi Laporan</h2></div>
+      <div class="report-summary-grid">
+        ${renderReportInfoItem('ID Laporan', report.id, true)}
+        ${renderReportInfoItem('Jenis Kejadian', getReportType(report))}
+        ${renderReportInfoItem('Instansi', getReportUnitLabel(report))}
+        ${renderReportInfoItem('Tanggal', initial.tanggal || (reportTimestamp ? formatDeviceDate(reportTimestamp, { day: '2-digit', month: 'long', year: 'numeric' }) : '-'))}
+        ${renderReportInfoItem('Waktu', initial.waktu || initial.jam || (initial.waktuLaporanMasuk ? formatDeviceDate(initial.waktuLaporanMasuk, { hour: '2-digit', minute: '2-digit' }) : '-'))}
+        ${renderReportInfoItem('Dibuat Oleh', getReportCreatorLabel(report))}
+      </div>
+    </section>
+
+    <section class="reports-panel report-initial-panel">
+      <div class="report-section-title"><span></span><h2>Laporan Awal</h2></div>
+      <div class="report-summary-grid">${readOnlyCategoryFields(initialFields)}</div>
+    </section>
+
+    <section class="reports-panel report-assignment-panel">
+      <div class="report-section-title"><span></span><h2>Penugasan</h2></div>
+      ${renderReportReadOnlyValues([
+        ['Anggota Regu', getAssignedPetugasNames(report)],
+        ['Pemimpin Regu', initial.pemimpinRegu],
+        ['Jumlah Personel', initial.jumlahPersonel]
+      ], 'is-assignment')}
+    </section>
+
+    <section id="report-pelaksanaan" class="reports-panel report-implementation-panel">
+      <div class="report-section-title"><span></span><h2>Pelaksanaan</h2></div>
+      ${isPetugasEditing
+        ? `<div class="form-grid">
+            <div class="field"><label>Waktu Tiba</label><input type="datetime-local" id="task-arrival" value="${toDatetimeLocal(implementation.waktuTiba)}"></div>
+            <div class="field"><label>Waktu Selesai</label><input type="datetime-local" id="task-finished" value="${toDatetimeLocal(implementation.waktuSelesai)}"></div>
+            <div class="field span2"><label>Hasil Penanganan</label><textarea id="task-result">${escapeDashboardHtml(implementation.hasilPenanganan || '')}</textarea></div>
+          </div>`
+        : renderReportReadOnlyValues([
+            ['Waktu Tiba', implementation.waktuTiba],
+            ['Waktu Selesai', implementation.waktuSelesai],
+            ['Hasil Penanganan', implementation.hasilPenanganan]
+          ], 'is-implementation')}
+    </section>
+
+    <section class="reports-panel report-detail-fields-panel">
+      <div class="report-section-title"><span></span><h2>Laporan Detail</h2></div>
+      ${renderReportReadOnlyValues([
+        ['Kronologi', detail.kronologi],
+        ['Penyebab', detail.penyebab],
+        ['Korban Jiwa', detail.korbanJiwa],
+        ['Korban Luka', detail.korbanLuka],
+        ['Kerugian', detail.kerugian === undefined ? '' : 'Rp ' + Number(detail.kerugian || 0).toLocaleString('id-ID')],
+        ['Keterangan', detail.keterangan]
+      ], 'is-detail')}
+    </section>
+
+  `;
+}
+
+
+function renderReportPhotosSection(report, isEditor, isPetugasEditing) {
+  const categoryKey = report.laporanAwal?.jenisLaporan || report.kategori;
+  const documentationKeys = (CATEGORY_CONFIG[categoryKey]?.fields || [])
+    .filter(field => field.type === 'images')
+    .map(field => field.key);
+
+  return `
+    <section class="reports-panel report-photos-panel">
+      <div class="report-section-title is-photo"><span></span><h2>Foto / Dokumentasi</h2></div>
+      ${renderReportDocumentationImages(report) || '<div class="report-photo-empty">Belum ada foto dokumentasi.</div>'}
+      ${isEditor && documentationKeys.length ? `<div class="form-grid report-documentation-inputs">${adminInitialEditFields(report, documentationKeys)}</div>` : ''}
+      ${isPetugasEditing && documentationKeys.length ? `<div class="report-petugas-photo-input"><label for="task-images">Tambah Dokumentasi</label><input type="file" id="task-images" accept="image/*" capture="environment" multiple><small>Maksimal 3 foto.</small></div>` : ''}
+      ${isPetugasEditing ? `<div class="report-inline-edit-footer"><button class="btn btn-ghost" type="button" onclick="setReportDetailEditMode(false)">Batal</button><button class="btn btn-ghost" type="button" onclick="savePetugasTask('${escapeDashboardAttribute(report.id)}', false)">Simpan Progres</button><button class="btn btn-submit" type="button" onclick="savePetugasTask('${escapeDashboardAttribute(report.id)}', true)">Selesaikan Penanganan</button></div>` : ''}
+    </section>
+  `;
+}
+
+
+function renderReportReadOnlyField(report, field) {
+  const initial = report.laporanAwal || {};
+  if (field.type === 'images') return '';
+
+  let value = initial[field.key];
+  if (field.type === 'location') {
+    const location = initial.lokasi || {};
+    const address = location.alamat || location.alamatAsli || location.inputAsli || '-';
+    const entries = getReportLocationEntries(location);
+    return `
+      <div class="report-info-item report-location-readonly">
+        <dt>${escapeDashboardHtml(field.label)}</dt>
+        <dd>
+          <div class="report-location-address-block">
+            <span>Alamat</span>
+            <strong>${escapeDashboardHtml(address)}</strong>
+          </div>
+          ${entries.length ? `
+            <dl class="report-location-fields">
+              ${entries.map(([label, entryValue]) => `
+                <div><dt>${escapeDashboardHtml(label)}</dt><dd>${escapeDashboardHtml(entryValue)}</dd></div>
+              `).join('')}
+            </dl>
+          ` : ''}
+          ${location.mapsUrl || location.googleMapsUrl ? `<a class="report-map-link" href="${escapeDashboardAttribute(location.mapsUrl || location.googleMapsUrl)}" target="_blank" rel="noopener noreferrer">Buka Google Maps ↗</a>` : ''}
+        </dd>
+      </div>`;
+  }
+  if (field.type === 'members') value = getAssignedPetugasNames(report);
+  if (field.type === 'leader') value = initial.pemimpinRegu || '-';
+  if (Array.isArray(value)) value = value.join(', ');
+
+  return `<div class="report-info-item"><dt>${escapeDashboardHtml(field.label)}</dt><dd>${escapeDashboardHtml(value === undefined || value === '' ? '-' : value)}</dd></div>`;
+}
+
+
+function getReportLocationEntries(location = {}) {
+  return [
+    ['Desa/Kelurahan', location.desaKelurahan || location.kelurahan],
+    ['Kecamatan', location.kecamatan],
+    ['Kabupaten/Kota', location.kabupaten],
+    ['Provinsi', location.provinsi],
+    ['Kode Pos', location.kodePos]
+  ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '');
 }
 
 
 function renderReportInfoItem(label, value, monospace = false) {
   return `<div class="report-info-item"><dt>${escapeDashboardHtml(label)}</dt><dd class="${monospace ? 'is-monospace' : ''}">${escapeDashboardHtml(value || '-')}</dd></div>`;
+}
+
+
+function getReportUnitLabel(report) {
+  const initial = report?.laporanAwal || {};
+  const category = CATEGORY_CONFIG[initial.jenisLaporan || report?.kategori];
+  const unit = initial.unit || category?.unit;
+  if (unit) return getUnitLabel(unit);
+
+  const sector = getReportSector(report);
+  if (sector === 'satpol') return 'Satpol PP';
+  if (sector === 'damkar') return 'Damkar';
+  return '-';
+}
+
+
+function getReportCreatorLabel(report) {
+  const creator = String(report?.createdBy || report?.laporanAwal?.createdBy || '').trim();
+  if (!creator) return '-';
+
+  const normalizedCreator = creator.toLowerCase();
+  const creatorUser = getAllUsers().find(user =>
+    [user.id, user.username, user.nama].some(value => String(value || '').toLowerCase() === normalizedCreator)
+  );
+  return creatorUser?.username || creatorUser?.nama || creator;
 }
 
 
@@ -950,32 +1291,56 @@ function renderReportDocumentationImages(report) {
 
 
 function renderReportProgress(report) {
-  const steps = [
-    'Laporan Dibuat',
-    'Menunggu Penugasan',
-    'Diproses',
-    'Selesai Penanganan',
-    'Menunggu Laporan Detail',
-    'Selesai'
-  ];
   const status = getReportStatus(report);
-  const activeStepByStatus = {
-    [REPORT_STATUS.DRAFT]: 0,
-    [REPORT_STATUS.MENUNGGU_PENUGASAN]: 1,
-    [REPORT_STATUS.MENUNGGU_KONFIRMASI]: 1,
-    [REPORT_STATUS.DIPROSES]: 2,
-    [REPORT_STATUS.SELESAI_PENANGANAN]: 3,
-    [REPORT_STATUS.MENUNGGU_LAPORAN_DETAIL]: 4,
-    [REPORT_STATUS.SELESAI]: 5,
-    [REPORT_STATUS.DIARSIPKAN]: 5
-  };
-  const activeStep = activeStepByStatus[status] ?? 0;
+  const workflowStatuses = [
+    REPORT_STATUS.DRAFT,
+    REPORT_STATUS.MENUNGGU_PENUGASAN,
+    REPORT_STATUS.MENUNGGU_KONFIRMASI,
+    REPORT_STATUS.DIPROSES,
+    REPORT_STATUS.SELESAI_PENANGANAN,
+    REPORT_STATUS.MENUNGGU_LAPORAN_DETAIL,
+    REPORT_STATUS.SELESAI
+  ];
+  const statusIndex = Object.fromEntries(workflowStatuses.map((value, index) => [value, index]));
+  const history = Array.isArray(report.auditLog) ? report.auditLog.slice().reverse() : [];
+  const latestStatusChange = history.find(activity => activity.action === 'MENGUBAH_STATUS' && activity.after === status);
+  let steps = workflowStatuses.map(value => ({ label: STATUS_LABELS[value] }));
+  let activeStep = statusIndex[status] ?? 0;
+  let completedSteps = activeStep;
 
-  return `<ol class="report-progress-steps" aria-label="Tahapan penanganan laporan">${steps.map((step, index) => `
-    <li class="${index < activeStep ? 'is-complete' : index === activeStep ? 'is-current' : ''}">
-      <span class="report-progress-marker">${index < activeStep ? '✓' : index + 1}</span>
-      <span class="report-progress-label">${escapeDashboardHtml(step)}</span>
-    </li>`).join('')}
+  if (status === REPORT_STATUS.DIBATALKAN) {
+    const previousIndex = statusIndex[latestStatusChange?.before] ?? 0;
+    steps = steps.slice(0, previousIndex + 1).concat({ label: STATUS_LABELS[REPORT_STATUS.DIBATALKAN] });
+    activeStep = steps.length - 1;
+    completedSteps = activeStep;
+  } else if (status === REPORT_STATUS.DIARSIPKAN) {
+    const archiveChange = history.find(activity => activity.action === 'MENGUBAH_STATUS' && activity.after === status);
+    if (archiveChange?.before === REPORT_STATUS.DIBATALKAN) {
+      const cancellation = history.find(activity => activity.action === 'MENGUBAH_STATUS' && activity.after === REPORT_STATUS.DIBATALKAN);
+      const previousIndex = statusIndex[cancellation?.before] ?? 0;
+      steps = steps.slice(0, previousIndex + 1)
+        .concat({ label: STATUS_LABELS[REPORT_STATUS.DIBATALKAN] }, { label: STATUS_LABELS[REPORT_STATUS.DIARSIPKAN] });
+      completedSteps = steps.length - 2;
+    } else {
+      const previousIndex = statusIndex[archiveChange?.before] ?? statusIndex[REPORT_STATUS.SELESAI];
+      steps = steps.slice(0, previousIndex + 1).concat({ label: STATUS_LABELS[REPORT_STATUS.DIARSIPKAN] });
+      completedSteps = steps.length - 1;
+    }
+    activeStep = steps.length - 1;
+  } else if (statusIndex[status] === undefined) {
+    steps = steps.concat({ label: STATUS_LABELS[status] || status });
+    activeStep = steps.length - 1;
+    completedSteps = activeStep;
+  }
+
+  return `<ol class="report-progress-steps" style="--report-progress-count:${steps.length}" aria-label="Progress penanganan: ${escapeDashboardAttribute(STATUS_LABELS[status] || status)}">${steps.map((step, index) => {
+    const stateClass = index < completedSteps ? 'is-complete' : index === activeStep ? 'is-current' : '';
+    return `
+    <li class="${stateClass}">
+      <span class="report-progress-marker">${index < completedSteps ? '✓' : index + 1}</span>
+      <span class="report-progress-label">${escapeDashboardHtml(step.label)}</span>
+    </li>`;
+  }).join('')}
   </ol>`;
 }
 
@@ -1806,8 +2171,10 @@ function renderDashboardCard(
 
   const alamat =
     lokasi.alamat ||
+    lokasi.alamatAsli ||
     lokasi.inputAsli ||
     'Lokasi belum diisi';
+  const locationDetails = getReportLocationEntries(lokasi);
 
 
   const jenis =
@@ -1913,6 +2280,13 @@ function renderDashboardCard(
 
         </div>
 
+        ${locationDetails.length ? `
+          <div class="rc-location-data">
+            ${locationDetails.map(([label, value]) => `
+              <span><small>${escapeDashboardHtml(label)}</small>${escapeDashboardHtml(value)}</span>
+            `).join('')}
+          </div>
+        ` : ''}
 
         <div class="rc-sub">
 
@@ -2764,58 +3138,6 @@ function renderDashboardActions(
     `;
 
   }
-
-
-  if (
-    isAdmin() ||
-    isSuperadmin()
-  ) {
-
-    const deleteAction =
-      isSuperadmin()
-        ? `
-          <button
-            class="icon-btn delete-report-btn"
-            title="Hapus laporan permanen"
-            onclick="
-              deleteSuperadminReport(
-                '${escapeDashboardAttribute(id)}',
-                event
-              )
-            "
-          >
-            <span aria-hidden="true">⌫</span>
-            <span>Hapus</span>
-          </button>
-        `
-        : '';
-
-    return `
-
-      <div class="report-action-group">
-
-      <button
-        class="icon-btn edit-report-btn"
-        title="Kelola Laporan"
-        onclick="
-          openAdminReport(
-            '${escapeDashboardAttribute(id)}',
-            event
-          )
-        "
-      >
-        <span aria-hidden="true">✎</span>
-        <span>Edit</span>
-      </button>
-
-      ${deleteAction}
-
-      </div>
-
-    `;
-
-  }
-
 
   return '';
 

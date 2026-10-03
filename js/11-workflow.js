@@ -4,6 +4,7 @@
 ========================================================= */
 
 let activeCategory = REPORT_CATEGORY.PENGENDALIAN;
+let reportSubmissionInProgress = false;
 
 const CATEGORY_ORDER = [
   REPORT_CATEGORY.PENGENDALIAN,
@@ -18,6 +19,45 @@ const DAFTAR_ANGGOTA = [
   'Cahyo Nugroho',
   'Dedi Kurniawan'
 ];
+
+function getCoordinatesForLocationInput(element, existingLocation = {}) {
+  const coordinateText = element.dataset.koordinat || '';
+  const coordinateParts = coordinateText.split(',').map(Number);
+  if (coordinateParts.length === 2 &&
+    coordinateParts.every(Number.isFinite) &&
+    Math.abs(coordinateParts[0]) <= 90 &&
+    Math.abs(coordinateParts[1]) <= 180) {
+    return { lat: coordinateParts[0], lng: coordinateParts[1] };
+  }
+
+  const rawLocation = element.value.trim();
+  const parsed = extractLatLng(rawLocation);
+  if (parsed) return parsed;
+
+  const detectedLocation = {
+    ...existingLocation,
+    ...(element._locationData || {})
+  };
+  const detectedAddress = String(
+    detectedLocation.alamatAsli ||
+    detectedLocation.inputAsli ||
+    detectedLocation.alamat ||
+    ''
+  ).trim().replace(/\s+/g, ' ').toLocaleLowerCase('id-ID');
+  const currentAddress = rawLocation.replace(/\s+/g, ' ').toLocaleLowerCase('id-ID');
+  const rawLatitude = detectedLocation.latitude;
+  const rawLongitude = detectedLocation.longitude;
+  const latitude = Number(detectedLocation.latitude);
+  const longitude = Number(detectedLocation.longitude);
+
+  return detectedAddress && detectedAddress === currentAddress &&
+    rawLatitude !== '' && rawLatitude != null &&
+    rawLongitude !== '' && rawLongitude != null &&
+    Number.isFinite(latitude) && Number.isFinite(longitude) &&
+    Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+    ? { lat: latitude, lng: longitude }
+    : null;
+}
 
 Object.assign(CATEGORY_CONFIG, {
   [REPORT_CATEGORY.PENGENDALIAN]: {
@@ -200,7 +240,7 @@ function openModal() {
   overlay.querySelector('.modal-head h2').textContent = 'Tambah Laporan';
   overlay.querySelector('.modal-footer').innerHTML = `
     <button class="btn btn-ghost" onclick="closeModal()">Batal</button>
-    <button class="btn btn-submit" onclick="submitReport()">Simpan Laporan</button>
+    <button id="submit-report-button" class="btn btn-submit" type="button" onclick="submitReport()">Simpan Laporan</button>
   `;
   renderCatTabs();
   renderForm();
@@ -213,59 +253,79 @@ async function submitReport() {
     return;
   }
 
-  const awal = await collectInitialReport();
-  if (!awal) return;
-
-  const reportId = generateReportId(reports);
-  const now = getCurrentDateTime();
-  const uploadedFiles = Array.isArray(awal.dokumentasi) ? awal.dokumentasi.filter(file => file && file.type && file.type.startsWith('image/')) : [];
-
-  const report = {
-    id: reportId,
-    status: REPORT_STATUS.MENUNGGU_PENUGASAN,
-    createdAt: now,
-    updatedAt: now,
-    createdBy: currentUser.id,
-    kategori: activeCategory,
-    laporanAwal: {
-      ...awal,
-      dokumentasi: []
-    },
-    pelaksanaan: {
-      petugasPelaksana: [],
-      waktuTiba: null,
-      waktuSelesai: null,
-      hasilPenanganan: '',
-      dokumentasi: [],
-      dataOperasional: {}
-    },
-    laporanDetail: {
-      kronologi: '',
-      penyebab: '',
-      korbanJiwa: 0,
-      korbanLuka: 0,
-      kerugian: 0,
-      keterangan: ''
-    },
-    auditLog: []
-  };
-
-  if (awal.petugasDitugaskan.length) {
-    report.status = REPORT_STATUS.MENUNGGU_KONFIRMASI;
-    report.laporanAwal.konfirmasiPenugasan = 'MENUNGGU_KONFIRMASI';
+  if (reportSubmissionInProgress) return;
+  reportSubmissionInProgress = true;
+  const saveButton = document.getElementById('submit-report-button');
+  if (saveButton) {
+    saveButton.disabled = true;
+    saveButton.textContent = 'Memvalidasi...';
   }
 
-  appendAuditLog(report, 'MEMBUAT_LAPORAN', null, 'Laporan awal dibuat');
-  reports.push(report);
-  closeModal();
-  showDashboard();
-  showToast('Laporan sedang disimpan ke database...');
-  saveReportAndUploadInBackground(report, uploadedFiles);
+  try {
+    const awal = await collectInitialReport();
+    if (!awal) return;
+
+    if (saveButton) saveButton.textContent = 'Menyimpan...';
+
+    const reportId = generateReportId(reports);
+    const now = getCurrentDateTime();
+    const uploadedFiles = Array.isArray(awal.dokumentasi) ? awal.dokumentasi.filter(file => file && file.type && file.type.startsWith('image/')) : [];
+
+    const report = {
+      id: reportId,
+      status: REPORT_STATUS.MENUNGGU_PENUGASAN,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: currentUser.id,
+      kategori: activeCategory,
+      laporanAwal: {
+        ...awal,
+        dokumentasi: []
+      },
+      pelaksanaan: {
+        petugasPelaksana: [],
+        waktuTiba: null,
+        waktuSelesai: null,
+        hasilPenanganan: '',
+        dokumentasi: [],
+        dataOperasional: {}
+      },
+      laporanDetail: {
+        kronologi: '',
+        penyebab: '',
+        korbanJiwa: 0,
+        korbanLuka: 0,
+        kerugian: 0,
+        keterangan: ''
+      },
+      auditLog: []
+    };
+
+    if (awal.petugasDitugaskan.length) {
+      report.status = REPORT_STATUS.MENUNGGU_KONFIRMASI;
+      report.laporanAwal.konfirmasiPenugasan = 'MENUNGGU_KONFIRMASI';
+    }
+
+    appendAuditLog(report, 'MEMBUAT_LAPORAN', null, 'Laporan awal dibuat');
+    reports.push(report);
+    closeModal();
+    showDashboard();
+    showToast('Laporan sedang disimpan ke database...');
+    saveReportAndUploadInBackground(report, uploadedFiles, true, true);
+  }
+  finally {
+    reportSubmissionInProgress = false;
+    if (saveButton?.isConnected) {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Simpan Laporan';
+    }
+  }
 }
 
-async function saveReportAndUploadInBackground(report, files) {
+async function saveReportAndUploadInBackground(report, files, showBlockingLoader = false, isNew = false) {
   const uploadFiles = Array.isArray(files) ? files : [];
   activeUploadCount += 1;
+  let reportSaved = false;
 
   showUploadStatus(
     'Menyimpan laporan',
@@ -273,10 +333,16 @@ async function saveReportAndUploadInBackground(report, files) {
   );
 
   try {
-    await saveReportRecord(report);
+    if (showBlockingLoader) {
+      showDatabaseLoading('Menyimpan laporan', `Laporan ${report.id} sedang disimpan ke database...`);
+    }
+
+    await saveReportRecord(report, isNew);
+    reportSaved = true;
+    if (showBlockingLoader) hideDatabaseLoading();
 
     if (uploadFiles.length === 0) {
-      await showDashboard(true);
+      await showDashboard();
       showUploadStatus(
         'Laporan berhasil disimpan',
         `Laporan ${report.id} sudah tersimpan di database.`
@@ -302,7 +368,7 @@ async function saveReportAndUploadInBackground(report, files) {
     report.pelaksanaan.dokumentasi = [...new Set([...(report.pelaksanaan.dokumentasi || []), ...urls])];
     report.updatedAt = getCurrentDateTime();
     await saveReportRecord(report);
-    await showDashboard(true);
+    await showDashboard();
 
     showUploadStatus(
       uploadResult.accepted
@@ -318,12 +384,24 @@ async function saveReportAndUploadInBackground(report, files) {
     );
   }
   catch (error) {
-    await showDashboard(true);
-    showUploadStatus(
-      'Upload foto gagal',
-      `${getFriendlyUploadError(error, 'Foto belum berhasil disimpan ke Drive.')} Laporan tetap tersimpan.`,
-      true
-    );
+    if (showBlockingLoader) hideDatabaseLoading();
+    if (!reportSaved) {
+      reports = reports.filter(item => item.id !== report.id);
+      saveDashboardDataCache();
+      await showDashboard(true);
+      showUploadStatus(
+        'Laporan gagal disimpan',
+        error.message || 'Laporan tidak berhasil disimpan ke database. Foto belum diupload.',
+        true
+      );
+    } else {
+      await showDashboard();
+      showUploadStatus(
+        'Upload foto gagal',
+        `${getFriendlyUploadError(error, 'Foto belum berhasil disimpan ke Drive.')} Laporan tetap tersimpan.`,
+        true
+      );
+    }
   }
   finally {
     activeUploadCount = Math.max(0, activeUploadCount - 1);
@@ -355,11 +433,7 @@ async function collectInitialReport() {
         showToast('Lengkapi lokasi kejadian.', true);
         return null;
       }
-      const coordinates = element.dataset.koordinat || '';
-      const coordinateParts = coordinates.split(',').map(Number);
-      const parsed = coordinateParts.length === 2 && coordinateParts.every(Number.isFinite)
-        ? { lat: coordinateParts[0], lng: coordinateParts[1] }
-        : extractLatLng(rawLocation);
+      const parsed = getCoordinatesForLocationInput(element);
       const administrative = ['kelurahan', 'kecamatan', 'kabupaten', 'provinsi', 'kodePos'].reduce((result, key) => {
         const input = document.getElementById(`f-lokasi-${key}`);
         result[key] = input ? input.value.trim() : '';
@@ -452,49 +526,75 @@ function openAdminReport(id, event) {
 
   const detailRoute = REPORT_DETAIL_ROUTE + encodeURIComponent(report.id);
   if (window.location.hash !== detailRoute) setSidebarView('report-detail', report.id);
-  renderAdminReportEditor(report, true);
-}
-
-
-function renderAdminReportEditor(report, scrollToEditor = false) {
-  if (!canEditReport()) return;
-
-  const inlineEditor = document.getElementById('report-inline-edit');
-  if (!inlineEditor) return;
-
-  const awal = report.laporanAwal || {};
-  const detail = report.laporanDetail || {};
-  const lokasi = awal.lokasi || {};
-  inlineEditor.innerHTML = `
-    <div class="report-inline-edit-header">
-      <div><h2>Kelola Laporan</h2><p>${escapeDashboardHtml(report.id)}</p></div>
-    </div>
-    <div class="form-grid">${adminEditForm(report, lokasi, detail)}</div>
-    <div class="report-inline-edit-footer">
-      <button class="btn btn-ghost" type="button" onclick="cancelAdminReportEdit()">Batal</button>
-      <button class="btn btn-submit" type="button" onclick="saveAdminReport('${escapeDashboardAttribute(report.id)}')">Simpan Perubahan</button>
-    </div>
-  `;
-  if (scrollToEditor) inlineEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setReportDetailEditMode(true);
+  document.getElementById('report-form-actions')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function cancelAdminReportEdit() {
-  if (currentAppView === 'report-detail') applyView();
+  setReportDetailEditMode(false);
 }
 
 function adminEditForm(report, lokasi, detail) {
   const awal = report.laporanAwal || {};
   const status = getReportStatus(report);
+  const reportTimestamp = awal.waktuLaporanMasuk || report.createdAt;
+  const category = CATEGORY_CONFIG[awal.jenisLaporan || report.kategori || activeCategory];
+  const infoKeys = ['tanggal', 'jenisKegiatan', 'jenisPelanggaran', 'jenisKebakaran', 'jenisKejadian'];
+  const assignmentKeys = ['anggota', 'pemimpinRegu', 'jumlahPersonel'];
+  const initialKeys = category.fields
+    .filter(field => !infoKeys.includes(field.key) && !assignmentKeys.includes(field.key) && field.type !== 'images')
+    .map(field => field.key);
+
   return `
-    <div class="field span2"><label>Status</label><select id="edit-status">
-      ${Object.keys(STATUS_LABELS).map(value => `<option value="${value}" ${value === status ? 'selected' : ''}>${STATUS_LABELS[value]}</option>`).join('')}
-    </select></div>
-    ${adminInitialEditFields(report)}
-    ${detailFields(detail)}
+    <section class="reports-panel report-info-panel">
+      <div class="report-section-title"><span></span><h2>Informasi Laporan</h2></div>
+      <div class="report-summary-grid">
+        ${renderReportInfoItem('ID Laporan', report.id, true)}
+        ${adminInitialEditFields(report, infoKeys)}
+        ${renderReportInfoItem('Instansi', getReportUnitLabel(report))}
+        ${renderReportInfoItem('Waktu', awal.waktu || awal.jam || (reportTimestamp ? formatDeviceDate(reportTimestamp, { hour: '2-digit', minute: '2-digit' }) : '-'))}
+        ${renderReportInfoItem('Dibuat Oleh', getReportCreatorLabel(report))}
+      </div>
+    </section>
+
+    <section class="reports-panel report-initial-panel">
+      <div class="report-section-title"><span></span><h2>Laporan Awal</h2></div>
+      <div class="form-grid">
+        <div class="field"><label>Status</label><select id="edit-status">
+          ${Object.keys(STATUS_LABELS).map(value => `<option value="${value}" ${value === status ? 'selected' : ''}>${STATUS_LABELS[value]}</option>`).join('')}
+        </select></div>
+        ${adminInitialEditFields(report, initialKeys)}
+      </div>
+    </section>
+
+    <section class="reports-panel report-assignment-panel">
+      <div class="report-section-title"><span></span><h2>Penugasan</h2></div>
+      <div class="form-grid">${adminInitialEditFields(report, assignmentKeys)}</div>
+    </section>
+
+    <section class="reports-panel report-implementation-panel">
+      <div class="report-section-title"><span></span><h2>Pelaksanaan</h2></div>
+      ${renderReportReadOnlyValues([
+        ['Waktu Tiba', report.pelaksanaan?.waktuTiba],
+        ['Waktu Selesai', report.pelaksanaan?.waktuSelesai],
+        ['Hasil Penanganan', report.pelaksanaan?.hasilPenanganan]
+      ], 'is-implementation')}
+    </section>
+
+    <section class="reports-panel report-detail-fields-panel">
+      <div class="report-section-title"><span></span><h2>Laporan Detail</h2></div>
+      <div class="form-grid">${detailFields(detail)}</div>
+    </section>
+
+    <div id="report-form-actions" class="report-inline-edit-footer">
+      <button class="btn btn-ghost" type="button" onclick="cancelAdminReportEdit()">Batal</button>
+      ${isSuperadmin() ? `<button class="delete-report-btn" type="button" onclick="deleteSuperadminReport('${escapeDashboardAttribute(report.id)}', event)">Hapus Laporan</button>` : ''}
+      <button class="btn btn-submit" type="button" onclick="saveAdminReport('${escapeDashboardAttribute(report.id)}')">Simpan Perubahan</button>
+    </div>
   `;
 }
 
-function adminInitialEditFields(report) {
+function adminInitialEditFields(report, selectedKeys = null) {
   const awal = report.laporanAwal || {};
   const assignedIds = Array.isArray(awal.petugasDitugaskan) ? awal.petugasDitugaskan : [];
   const assignedNames = Array.isArray(awal.anggota)
@@ -502,14 +602,14 @@ function adminInitialEditFields(report) {
     : getAllUsers().filter(user => assignedIds.includes(user.id)).map(user => user.nama || user.username);
   const categoryKey = awal.jenisLaporan || report.kategori || activeCategory;
   const legacyValue = {
-    tanggal: awal.tanggal || String(awal.waktuLaporanMasuk || '').slice(0, 10),
+    tanggal: awal.tanggal || String(awal.waktuLaporanMasuk || report.createdAt || '').slice(0, 10),
     jenisPelanggaran: awal.jenisPelanggaran || (categoryKey === REPORT_CATEGORY.PENEGAKAN ? awal.jenisKegiatan : ''),
     jenisKebakaran: awal.jenisKebakaran || (categoryKey === REPORT_CATEGORY.PEMADAMAN ? awal.jenisKegiatan : ''),
     jenisKejadian: awal.jenisKejadian || (categoryKey === REPORT_CATEGORY.PENYELAMATAN ? awal.jenisKegiatan : ''),
     jumlahPersonel: awal.jumlahPersonel || assignedNames.length,
     dokumentasi: awal.dokumentasi || report.pelaksanaan?.dokumentasi || []
   };
-  return CATEGORY_CONFIG[categoryKey].fields.map(field => {
+  return CATEGORY_CONFIG[categoryKey].fields.filter(field => !selectedKeys || selectedKeys.includes(field.key)).map(field => {
     let value = awal[field.key] ?? legacyValue[field.key] ?? '';
     if (field.type === 'location') value = awal.lokasi?.alamatAsli || awal.lokasi?.inputAsli || awal.lokasi?.alamat || '';
     if (field.type === 'members') value = assignedNames;
@@ -517,6 +617,7 @@ function adminInitialEditFields(report) {
     return renderWorkflowField(field, value, true, awal.lokasi || {});
   }).join('');
 }
+
 
 function detailFields(detail) {
   return `
@@ -529,26 +630,34 @@ function detailFields(detail) {
   `;
 }
 
-function updateEditMemberCount() {
-  const count = document.querySelectorAll(
-    '.edit-petugas-checkbox:checked'
-  ).length;
-  const countElement = document.getElementById('edit-member-count');
-  if (countElement) countElement.textContent = count;
+
+function renderReportReadOnlyValues(items, layout = '') {
+  const fullWidthLabels = new Set(['Hasil Penanganan', 'Kronologi', 'Penyebab', 'Keterangan']);
+  return `<dl class="report-readonly-grid ${layout}">${items.map(([label, value]) => `
+    <div class="report-readonly-item ${fullWidthLabels.has(label) ? 'is-wide' : ''}"><dt>${escapeDashboardHtml(label)}</dt><dd>${escapeDashboardHtml(value === null || value === undefined || value === '' ? '-' : value)}</dd></div>
+  `).join('')}</dl>`;
 }
 
+
 async function saveAdminReport(id) {
+  if (!canEditReport() || !reportDetailEditMode) {
+    showToast('Buka mode Kelola Laporan sebelum menyimpan perubahan.', true);
+    return;
+  }
+
+  if (reportDetailEditBaseline && captureReportDetailEditState() === reportDetailEditBaseline) {
+    setReportDetailEditMode(false);
+    showToast('Tidak ada perubahan untuk disimpan.');
+    return;
+  }
+
   const report = reports.find(item => item.id === id);
   if (!report) return;
   const before = cloneData(report);
   const locationElement = document.getElementById('f-lokasi');
   const locationText = locationElement.value.trim();
-  const coordinates = locationElement.dataset.koordinat || '';
-  const coordinateParts = coordinates.split(',').map(Number);
-  const coords = coordinateParts.length === 2 && coordinateParts.every(Number.isFinite)
-    ? { lat: coordinateParts[0], lng: coordinateParts[1] }
-    : extractLatLng(locationText);
   const location = report.laporanAwal.lokasi || {};
+  const coords = getCoordinatesForLocationInput(locationElement, location);
   const administrative = ['kelurahan', 'kecamatan', 'kabupaten', 'provinsi', 'kodePos'].reduce((result, key) => {
     const input = document.getElementById(`edit-lokasi-${key}`) || document.getElementById(`f-lokasi-${key}`);
     result[key] = input ? input.value.trim() : (location[key] || '');
@@ -598,8 +707,8 @@ async function saveAdminReport(id) {
     inputAsli: locationText,
     alamat: locationText,
     ...administrative,
-    latitude: coords ? coords.lat : location.latitude,
-    longitude: coords ? coords.lng : location.longitude,
+    latitude: coords ? coords.lat : null,
+    longitude: coords ? coords.lng : null,
     mapsUrl: locationElement.dataset.maps || location.mapsUrl || (coords ? buildMapsUrlFromKoordinat(coords.lat + ',' + coords.lng) : buildMapsUrlFromAlamat(locationText)),
     googleMapsUrl: locationElement.dataset.maps || location.googleMapsUrl || (coords ? buildMapsUrlFromKoordinat(coords.lat + ',' + coords.lng) : buildMapsUrlFromAlamat(locationText)),
     sumberWilayah: regionChanged ? 'admin' : (location.sumberWilayah || ''),
@@ -643,6 +752,7 @@ async function saveAdminReport(id) {
   }
   appendChangedFields(report, before);
   report.updatedAt = getCurrentDateTime();
+  reportDetailEditMode = false;
   showDashboard();
   showToast('Perubahan sedang disimpan ke database...');
   saveReportAndUploadInBackground(report, selectedImageFiles);
@@ -677,30 +787,8 @@ function openPetugasTaskForm(id) {
     return;
   }
 
-  const awal = report.laporanAwal || {};
-  const pelaksanaan = report.pelaksanaan || {};
-  const overlay = document.getElementById('modal-overlay');
-  overlay.querySelector('.modal-head h2').textContent = 'Pelaksanaan ' + report.id;
-  overlay.querySelector('.cat-tabs').innerHTML = '';
-  overlay.querySelector('.form-grid').innerHTML = `
-    <div class="field span2"><label>Lokasi kejadian</label><div class="detail-readonly">${escapeDashboardHtml(awal.lokasi?.alamat || awal.lokasi?.inputAsli || '-')}</div></div>
-    <div class="field"><label>Status</label><div class="detail-readonly">${escapeDashboardHtml(getStatusLabelSafe(report.status))}</div></div>
-    <div class="field"><label>Waktu tiba</label><input type="datetime-local" id="task-arrival" value="${toDatetimeLocal(pelaksanaan.waktuTiba)}"></div>
-    <div class="field"><label>Waktu selesai</label><input type="datetime-local" id="task-finished" value="${toDatetimeLocal(pelaksanaan.waktuSelesai)}"></div>
-    <div class="field span2"><label>Hasil penanganan</label><textarea id="task-result">${escapeDashboardHtml(pelaksanaan.hasilPenanganan || '')}</textarea></div>
-    <div class="field span2">
-      <label>Dokumentasi foto</label>
-      <input type="file" id="task-images" accept="image/*" capture="environment" multiple>
-      <label class="btn btn-ghost" for="task-images">Ambil Foto</label>
-      <small>Maksimal 3 foto. Di HP, tombol ini membuka kamera atau galeri.</small>
-    </div>
-  `;
-  overlay.querySelector('.modal-footer').innerHTML = `
-    <button class="btn btn-ghost" onclick="closeModal()">Batal</button>
-    <button class="btn btn-ghost" onclick="savePetugasTask('${escapeDashboardAttribute(id)}', false)">Simpan Progres</button>
-    <button class="btn btn-submit" onclick="savePetugasTask('${escapeDashboardAttribute(id)}', true)">Selesaikan Penanganan</button>
-  `;
-  overlay.classList.add('open');
+  setReportDetailEditMode(true);
+  document.getElementById('report-pelaksanaan')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function savePetugasTask(id, complete = false) {
@@ -734,7 +822,7 @@ async function savePetugasTask(id, complete = false) {
   }
   appendChangedFields(report, before);
   report.updatedAt = getCurrentDateTime();
-  closeModal();
+  reportDetailEditMode = false;
   showDashboard();
   showToast('Data pelaksanaan sedang disimpan ke database...');
   saveReportAndUploadInBackground(report, files);
@@ -887,12 +975,52 @@ async function saveManagedUser(id) {
     ? null
     : document.getElementById('user-unit').value;
   if (password) user.password = password;
-  if (!existing) users.push(user);
-  await saveUserRecord(user);
+
+  const overlay = document.getElementById('modal-overlay');
+  const saveButton = overlay.querySelector('.modal-footer .btn-submit');
+  const backButton = overlay.querySelector('.modal-footer .btn-ghost');
+  if (saveButton?.disabled) return;
+
+  if (saveButton) {
+    saveButton.disabled = true;
+    saveButton.textContent = 'Menyimpan...';
+  }
+  if (backButton) backButton.disabled = true;
+
+  showUploadStatus(
+    existing ? 'Memperbarui user' : 'Membuat user',
+    `Akun @${username} sedang disimpan ke database.`
+  );
+
+  try {
+    await saveUserRecord(user, !existing);
+  } catch (error) {
+    if (existing && before) Object.assign(existing, before);
+    showUploadStatus(
+      'User gagal disimpan',
+      error.message || 'User gagal disimpan ke database. Silakan coba lagi.',
+      true
+    );
+    return;
+  } finally {
+    if (saveButton?.isConnected) {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Simpan User';
+    }
+    if (backButton?.isConnected) backButton.disabled = false;
+  }
+
+  if (!existing) {
+    users.push(user);
+    saveDashboardDataCache();
+  }
   appendSystemAuditLog(existing ? 'MENGUBAH_USER' : 'MEMBUAT_USER', before, { ...user, password: undefined });
   closeModal();
   renderUserManagement();
-  showToast('User berhasil disimpan.');
+  showUploadStatus(
+    existing ? 'User berhasil diperbarui' : 'User berhasil dibuat',
+    `Akun @${username} sudah tersimpan di database.`
+  );
 }
 
 async function toggleManagedUser(id) {
@@ -1035,7 +1163,7 @@ async function deleteSuperadminReport(id, event) {
   await deleteReport(id);
   reports = reports.filter(item => item.id !== id);
   saveDashboardDataCache();
-  showDashboard();
+  setSidebarView('reports');
   showToast('Laporan berhasil dihapus.');
 }
 
